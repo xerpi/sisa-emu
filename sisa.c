@@ -299,7 +299,7 @@ static void sisa_demw_execute(struct sisa_context *sisa)
 		break;
 	case SISA_OPCODE_LOAD_BYTE: {
 		uint16_t paddr;
-		uint16_t vaddr = REGS[INSTR_Ra_6(instr)] + (SEXT_6(X_DOWNTO_Y(instr, 5, 0)) << 1);
+		uint16_t vaddr = REGS[INSTR_Ra_6(instr)] + SEXT_6(X_DOWNTO_Y(instr, 5, 0));
 
 		if (!sisa_tlb_access(sisa, &sisa->dtlb, vaddr, &paddr, 0)) {
 			break;
@@ -310,7 +310,7 @@ static void sisa_demw_execute(struct sisa_context *sisa)
 	}
 	case SISA_OPCODE_STORE_BYTE: {
 		uint16_t paddr;
-		uint16_t vaddr = REGS[INSTR_Ra_6(instr)] + (SEXT_6(X_DOWNTO_Y(instr, 5, 0)) << 1);
+		uint16_t vaddr = REGS[INSTR_Ra_6(instr)] + SEXT_6(X_DOWNTO_Y(instr, 5, 0));
 
 		if (!sisa_tlb_access(sisa, &sisa->dtlb, vaddr, &paddr, 0)) {
 			break;
@@ -352,16 +352,16 @@ static void sisa_demw_execute(struct sisa_context *sisa)
 		case SISA_INSTR_SPECIAL_F_WRVI: {
 			uint8_t entry = REGS[INSTR_Ra_6(instr)];
 			uint16_t value = REGS[INSTR_Rb_9(instr)];
-			sisa->dtlb.entries[entry].pfn = X_DOWNTO_Y(value, 3, 0);
-			sisa->dtlb.entries[entry].r = X_DOWNTO_Y(value, 4, 4);
-			sisa->dtlb.entries[entry].v = X_DOWNTO_Y(value, 5, 5);
-			sisa->dtlb.entries[entry].p = X_DOWNTO_Y(value, 6, 6);
+			sisa->itlb.entries[entry].vpn = X_DOWNTO_Y(value, 3, 0);
 			break;
 		}
 		case SISA_INSTR_SPECIAL_F_WRPD: {
 			uint8_t entry = REGS[INSTR_Ra_6(instr)];
 			uint16_t value = REGS[INSTR_Rb_9(instr)];
-			sisa->itlb.entries[entry].vpn = X_DOWNTO_Y(value, 3, 0);
+			sisa->dtlb.entries[entry].pfn = X_DOWNTO_Y(value, 3, 0);
+			sisa->dtlb.entries[entry].r = X_DOWNTO_Y(value, 4, 4);
+			sisa->dtlb.entries[entry].v = X_DOWNTO_Y(value, 5, 5);
+			sisa->dtlb.entries[entry].p = X_DOWNTO_Y(value, 6, 6);
 			break;
 		}
 		case SISA_INSTR_SPECIAL_F_WRVD: {
@@ -405,10 +405,14 @@ void sisa_step_cycle(struct sisa_context *sisa)
 	case SISA_CPU_STATUS_DEMW:
 		sisa_demw_execute(sisa);
 		sisa->cpu.pc += 2;
-		if (sisa->cpu.exc_happened)
-			sisa->cpu.status = SISA_CPU_STATUS_SYSTEM;
-		else
+		if (sisa->cpu.exc_happened) {
+			if (sisa->cpu.exception != SISA_EXCEPTION_INTERRUPT ||
+			    sisa->cpu.regfile.system.psw.i) {
+				sisa->cpu.status = SISA_CPU_STATUS_SYSTEM;
+			}
+		} else {
 			sisa->cpu.status = SISA_CPU_STATUS_FETCH;
+		}
 		break;
 	case SISA_CPU_STATUS_NOP:
 		sisa->cpu.status = SISA_CPU_STATUS_SYSTEM;
@@ -451,5 +455,30 @@ void sisa_print_dump(struct sisa_context *sisa)
 
 	for (i = 0; i < 8; i++) {
 		printf("r%i: 0x%04X\n", i, sisa->cpu.regfile.general.regs[i]);
+	}
+}
+
+void sisa_print_tlb_dump(struct sisa_context *sisa)
+{
+	int i;
+	const struct sisa_tlb *itlb = &sisa->itlb;
+	const struct sisa_tlb *dtlb = &sisa->dtlb;
+
+	printf("ITLB:\n");
+
+	for (i = 0; i < SISA_NUM_TLB_ENTRIES; i++) {
+		printf("  [%i]: vpn: 0x%01X -> pfn: 0x%01X, {r: %d, v: %d, p: %d}\n",
+			i, itlb->entries[i].vpn, itlb->entries[i].pfn,
+			itlb->entries[i].r, itlb->entries[i].v,
+			itlb->entries[i].p);
+	}
+
+	printf("DTLB:\n");
+
+	for (i = 0; i < SISA_NUM_TLB_ENTRIES; i++) {
+		printf("  [%i]: vpn: 0x%01X -> pfn: 0x%01X, {r: %d, v: %d, p: %d}\n",
+			i, dtlb->entries[i].vpn, dtlb->entries[i].pfn,
+			dtlb->entries[i].r, dtlb->entries[i].v,
+			dtlb->entries[i].p);
 	}
 }

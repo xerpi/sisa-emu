@@ -111,6 +111,11 @@ int main(int argc, char *argv[])
 
 	stdin_setup();
 
+	while (sisa.cpu.pc != 0x1000) {
+		sisa_step_cycle(&sisa);
+	}
+	printf("User code reached.\n");
+
 	while (1) {
 		step = 0;
 		if (run_mode == RUN_MODE_STEP || sisa_cpu_is_halted(&sisa)) {
@@ -123,6 +128,8 @@ int main(int argc, char *argv[])
 				sisa_init(&sisa);
 				run_mode = RUN_MODE_STEP;
 				printf("CPU reseted\n");
+			} else if (c == 't') {
+				sisa_print_tlb_dump(&sisa);
 			} else if (c == 'q') {
 				break;
 			}
