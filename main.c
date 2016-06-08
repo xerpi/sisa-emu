@@ -1,5 +1,7 @@
 #include <stdio.h>
 #include <stdint.h>
+#include <termios.h>
+#include <unistd.h>
 #include "sisa.h"
 
 #define USER_START_ADDR 0x1000
@@ -44,6 +46,21 @@ static int load_file_err(const char *file, void *dst, size_t max_size, const cha
 	return read_size;
 }
 
+static void stdin_setup()
+{
+	static struct termios t;
+
+	tcgetattr(STDIN_FILENO, &t);
+	t.c_lflag &= ~ICANON;
+	tcsetattr(STDIN_FILENO, TCSANOW, &t);
+}
+
+enum run_mode {
+	RUN_MODE_STEP,
+	RUN_MODE_RUN
+};
+
+
 int main(int argc, char *argv[])
 {
 	uint8_t code[MAX_CODE_SIZE];
@@ -53,6 +70,8 @@ int main(int argc, char *argv[])
 	int data_size;
 	int user_size;
 	struct sisa_context sisa;
+	enum run_mode run_mode = RUN_MODE_STEP;
+	char c;
 
 	printf("sisa-emu by xerpi\n");
 
@@ -83,10 +102,23 @@ int main(int argc, char *argv[])
 		sisa_load_binary(&sisa, USER_START_ADDR, user, user_size);
 	}
 
+	stdin_setup();
+
 	while (1) {
-		sisa_print_dump(&sisa);
-		sisa_step_cycle(&sisa);
-		printf("\n");
+		if (run_mode == RUN_MODE_STEP) {
+			c = getchar();
+			if (c == 's') {
+				sisa_print_dump(&sisa);
+				sisa_step_cycle(&sisa);
+				printf("\n");
+			} else if (c == 'r') {
+				run_mode = RUN_MODE_RUN;
+			}
+		} else if (run_mode == RUN_MODE_RUN) {
+			sisa_print_dump(&sisa);
+			sisa_step_cycle(&sisa);
+			printf("\n");
+		}
 	}
 
 	return 0;

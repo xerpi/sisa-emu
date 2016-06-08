@@ -2,6 +2,23 @@
 #include <string.h>
 #include "sisa.h"
 
+#define X_DOWNTO_Y(val, x, y) (((val) >> (y)) & ((1 << ((x) - (y) + 1)) - 1))
+#define SEXT_5(val)           (((-((val) >> 4)) & ~((1 << 5) - 1)) | (val))
+#define SEXT_8(val)           (((-((val) >> 7)) & ~((1 << 8) - 1)) | (val))
+
+#define INSTR_OPCODE(instr) X_DOWNTO_Y(instr, 15, 12)
+#define INSTR_Rd(instr)     X_DOWNTO_Y(instr, 11, 9)
+#define INSTR_Ra_9(instr)   X_DOWNTO_Y(instr, 11, 9)
+#define INSTR_Ra_6(instr)   X_DOWNTO_Y(instr, 8, 6)
+#define INSTR_Rb_9(instr)   X_DOWNTO_Y(instr, 11, 9)
+#define INSTR_Rb_0(instr)   X_DOWNTO_Y(instr, 2, 0)
+#define INSTR_IMM8(instr)   X_DOWNTO_Y(instr, 7, 0)
+
+#define MOV_F_BITS(instr)        X_DOWNTO_Y(instr, 8, 8)
+#define ARIT_LOGIC_F_BITS(instr) X_DOWNTO_Y(instr, 5, 3)
+
+#define REGS (sisa->cpu.regfile.general.regs)
+
 static void sisa_tlb_init(struct sisa_tlb *tlb)
 {
 	int i;
@@ -62,6 +79,67 @@ static void sisa_tlb_access(const struct sisa_tlb *tlb, uint8_t vpn, uint8_t *pf
 	*miss = 1;
 }
 
+static void sisa_demw_execute(struct sisa_context *sisa)
+{
+	const uint16_t instr = sisa->cpu.ir;
+
+	switch (INSTR_OPCODE(instr)) {
+	case SISA_OPCODE_MOV:
+		switch (MOV_F_BITS(instr)) {
+		case SISA_INSTR_ARIT_LOGIC_F_MOVI:
+			REGS[INSTR_Rd(instr)] = SEXT_8(INSTR_IMM8(instr));
+			break;
+		case SISA_INSTR_ARIT_LOGIC_F_MOVHI:
+			REGS[INSTR_Rd(instr)] = INSTR_IMM8(instr) << 8 | REGS[INSTR_Rd(instr)];
+			break;
+		}
+		break;
+	case SISA_OPCODE_ARIT_LOGIC:
+		switch (ARIT_LOGIC_F_BITS(instr)) {
+		case SISA_INSTR_ARIT_LOGIC_F_AND:
+			REGS[INSTR_Rd(instr)] = REGS[INSTR_Ra_6(instr)] & REGS[INSTR_Rb_0(instr)];
+			break;
+		case SISA_INSTR_ARIT_LOGIC_F_OR:
+			REGS[INSTR_Rd(instr)] = REGS[INSTR_Ra_6(instr)] | REGS[INSTR_Rb_0(instr)];
+			break;
+		case SISA_INSTR_ARIT_LOGIC_F_XOR:
+			REGS[INSTR_Rd(instr)] = REGS[INSTR_Ra_6(instr)] ^ REGS[INSTR_Rb_0(instr)];
+			break;
+		case SISA_INSTR_ARIT_LOGIC_F_NOT:
+			REGS[INSTR_Rd(instr)] = ~REGS[INSTR_Ra_6(instr)];
+			break;
+		case SISA_INSTR_ARIT_LOGIC_F_ADD:
+			REGS[INSTR_Rd(instr)] = REGS[INSTR_Ra_6(instr)] + REGS[INSTR_Rb_0(instr)];
+			break;
+		case SISA_INSTR_ARIT_LOGIC_F_SUB:
+			REGS[INSTR_Rd(instr)] = REGS[INSTR_Ra_6(instr)] - REGS[INSTR_Rb_0(instr)];
+			break;
+		case SISA_INSTR_ARIT_LOGIC_F_SHA: {
+			int shift = SEXT_5(X_DOWNTO_Y(REGS[INSTR_Rb_0(instr)], 4, 0));
+			if (shift > 0) {
+				REGS[INSTR_Rd(instr)] = (int16_t)REGS[INSTR_Ra_6(instr)] << shift;
+			} else {
+				REGS[INSTR_Rd(instr)] = (int16_t)REGS[INSTR_Ra_6(instr)] >> -shift;
+			}
+			break;
+		}
+		case SISA_INSTR_ARIT_LOGIC_F_SHL: {
+			int shift = SEXT_5(X_DOWNTO_Y(REGS[INSTR_Rb_0(instr)], 4, 0));
+			if (shift > 0) {
+				REGS[INSTR_Rd(instr)] = REGS[INSTR_Ra_6(instr)] << shift;
+			} else {
+				REGS[INSTR_Rd(instr)] = REGS[INSTR_Ra_6(instr)] >> -shift;
+			}
+			break;
+		}
+		}
+		break;
+	default:
+		printf("Invalid instruction!\n");
+		break;
+	}
+}
+
 void sisa_step_cycle(struct sisa_context *sisa)
 {
 	switch (sisa->cpu.status) {
@@ -104,8 +182,7 @@ void sisa_step_cycle(struct sisa_context *sisa)
 		break;
 	}
 	case SISA_CPU_STATUS_DEMW:
-
-
+		sisa_demw_execute(sisa);
 		sisa->cpu.pc += 2;
 		sisa->cpu.status = SISA_CPU_STATUS_FETCH;
 		break;
