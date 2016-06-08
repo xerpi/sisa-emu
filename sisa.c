@@ -100,15 +100,24 @@ static int sisa_tlb_access(struct sisa_context *sisa, const struct sisa_tlb *tlb
 	}
 
 	if (!found) {
-		sisa->cpu.exception = SISA_EXCEPTION_ITLB_MISS;
+		if (&sisa->itlb == tlb)
+			sisa->cpu.exception = SISA_EXCEPTION_ITLB_MISS;
+		else
+			sisa->cpu.exception = SISA_EXCEPTION_DTLB_MISS;
 		sisa->cpu.exc_happened = 1;
 		return 0;
 	} else if (!v) {
-		sisa->cpu.exception = SISA_EXCEPTION_ITLB_INVALID;
+		if (&sisa->itlb == tlb)
+			sisa->cpu.exception = SISA_EXCEPTION_ITLB_INVALID;
+		else
+			sisa->cpu.exception = SISA_EXCEPTION_DTLB_INVALID;
 		sisa->cpu.exc_happened = 1;
 		return 0;
 	} else if (p && sisa->cpu.regfile.system.psw.m == SISA_CPU_MODE_USER) {
-		sisa->cpu.exception = SISA_EXCEPTION_ITLB_PROTECTED;
+		if (&sisa->itlb == tlb)
+			sisa->cpu.exception = SISA_EXCEPTION_ITLB_PROTECTED;
+		else
+			sisa->cpu.exception = SISA_EXCEPTION_DTLB_PROTECTED;
 		sisa->cpu.exc_happened = 1;
 		return 0;
 	}
@@ -187,7 +196,7 @@ static void sisa_demw_execute(struct sisa_context *sisa)
 		break;
 	case SISA_OPCODE_LOAD: {
 		uint16_t paddr;
-		uint16_t vaddr = REGS[INSTR_Ra_6(instr)] + SEXT_6(X_DOWNTO_Y(instr, 5, 0)) << 1;
+		uint16_t vaddr = REGS[INSTR_Ra_6(instr)] + (SEXT_6(X_DOWNTO_Y(instr, 5, 0)) << 1);
 
 		if (!sisa_tlb_access(sisa, &sisa->dtlb, vaddr, &paddr, 1)) {
 			break;
@@ -198,7 +207,7 @@ static void sisa_demw_execute(struct sisa_context *sisa)
 	}
 	case SISA_OPCODE_STORE: {
 		uint16_t paddr;
-		uint16_t vaddr = REGS[INSTR_Ra_6(instr)] + SEXT_6(X_DOWNTO_Y(instr, 5, 0)) << 1;
+		uint16_t vaddr = REGS[INSTR_Ra_6(instr)] + (SEXT_6(X_DOWNTO_Y(instr, 5, 0)) << 1);
 
 		if (!sisa_tlb_access(sisa, &sisa->dtlb, vaddr, &paddr, 1)) {
 			break;
@@ -290,7 +299,7 @@ static void sisa_demw_execute(struct sisa_context *sisa)
 		break;
 	case SISA_OPCODE_LOAD_BYTE: {
 		uint16_t paddr;
-		uint16_t vaddr = REGS[INSTR_Ra_6(instr)] + SEXT_6(X_DOWNTO_Y(instr, 5, 0)) << 1;
+		uint16_t vaddr = REGS[INSTR_Ra_6(instr)] + (SEXT_6(X_DOWNTO_Y(instr, 5, 0)) << 1);
 
 		if (!sisa_tlb_access(sisa, &sisa->dtlb, vaddr, &paddr, 0)) {
 			break;
@@ -301,7 +310,7 @@ static void sisa_demw_execute(struct sisa_context *sisa)
 	}
 	case SISA_OPCODE_STORE_BYTE: {
 		uint16_t paddr;
-		uint16_t vaddr = REGS[INSTR_Ra_6(instr)] + SEXT_6(X_DOWNTO_Y(instr, 5, 0)) << 1;
+		uint16_t vaddr = REGS[INSTR_Ra_6(instr)] + (SEXT_6(X_DOWNTO_Y(instr, 5, 0)) << 1);
 
 		if (!sisa_tlb_access(sisa, &sisa->dtlb, vaddr, &paddr, 0)) {
 			break;
