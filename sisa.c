@@ -66,6 +66,7 @@ void sisa_init(struct sisa_context *sisa)
 	sisa->cpu.status = SISA_CPU_STATUS_FETCH;
 	sisa->cpu.exc_happened = 0;
 	sisa->cpu.halted = 0;
+	sisa->cpu.cycles = 0;
 
 	sisa_tlb_init(&sisa->itlb);
 	sisa_tlb_init(&sisa->dtlb);
@@ -106,7 +107,7 @@ static int sisa_tlb_access(struct sisa_context *sisa, const struct sisa_tlb *tlb
 		sisa->cpu.exception = SISA_EXCEPTION_ITLB_INVALID;
 		sisa->cpu.exc_happened = 1;
 		return 0;
-	} else if (p && !(sisa->cpu.regfile.system.s7 & 1)) {
+	} else if (p && sisa->cpu.regfile.system.psw.m == SISA_CPU_MODE_USER) {
 		sisa->cpu.exception = SISA_EXCEPTION_ITLB_PROTECTED;
 		sisa->cpu.exc_happened = 1;
 		return 0;
@@ -189,7 +190,6 @@ static void sisa_demw_execute(struct sisa_context *sisa)
 		uint16_t vaddr = REGS[INSTR_Ra_6(instr)] + SEXT_6(X_DOWNTO_Y(instr, 5, 0)) << 1;
 
 		if (!sisa_tlb_access(sisa, &sisa->dtlb, vaddr, &paddr, 1)) {
-			sisa->cpu.status = SISA_CPU_STATUS_SYSTEM;
 			break;
 		}
 
@@ -201,7 +201,6 @@ static void sisa_demw_execute(struct sisa_context *sisa)
 		uint16_t vaddr = REGS[INSTR_Ra_6(instr)] + SEXT_6(X_DOWNTO_Y(instr, 5, 0)) << 1;
 
 		if (!sisa_tlb_access(sisa, &sisa->dtlb, vaddr, &paddr, 1)) {
-			sisa->cpu.status = SISA_CPU_STATUS_SYSTEM;
 			break;
 		}
 
@@ -277,16 +276,15 @@ static void sisa_demw_execute(struct sisa_context *sisa)
 		case SISA_INSTR_ABSOLUTE_JUMP_F_JMP:
 			sisa->cpu.pc = REGS[INSTR_Ra_6(instr)] - 2;
 			break;
-		case SISA_INSTR_ABSOLUTE_JUMP_F_JAL:
-			REGS[INSTR_Rd(instr)] = sisa->cpu.pc + 2;
+		case SISA_INSTR_ABSOLUTE_JUMP_F_JAL: {
+			uint16_t pc = sisa->cpu.pc;
 			sisa->cpu.pc = REGS[INSTR_Ra_6(instr)] - 2;
+			REGS[INSTR_Rd(instr)] = pc + 2;
 			break;
+		}
 		case SISA_INSTR_ABSOLUTE_JUMP_F_CALLS:
-			sisa->cpu.regfile.system.s1 = sisa->cpu.pc + 2;
-			sisa->cpu.pc = sisa->cpu.regfile.system.s5 - 2;
-			sisa->cpu.regfile.system.s0 = sisa->cpu.regfile.system.s7;
-			sisa->cpu.regfile.system.psw.i = 0;
-			sisa->cpu.regfile.system.psw.m = SISA_CPU_MODE_SYSTEM;
+			sisa->cpu.exception = SISA_EXCEPTION_CALLS;
+			sisa->cpu.exc_happened = 1;
 			break;
 		}
 		break;
@@ -295,7 +293,6 @@ static void sisa_demw_execute(struct sisa_context *sisa)
 		uint16_t vaddr = REGS[INSTR_Ra_6(instr)] + SEXT_6(X_DOWNTO_Y(instr, 5, 0)) << 1;
 
 		if (!sisa_tlb_access(sisa, &sisa->dtlb, vaddr, &paddr, 0)) {
-			sisa->cpu.status = SISA_CPU_STATUS_SYSTEM;
 			break;
 		}
 
@@ -307,7 +304,6 @@ static void sisa_demw_execute(struct sisa_context *sisa)
 		uint16_t vaddr = REGS[INSTR_Ra_6(instr)] + SEXT_6(X_DOWNTO_Y(instr, 5, 0)) << 1;
 
 		if (!sisa_tlb_access(sisa, &sisa->dtlb, vaddr, &paddr, 0)) {
-			sisa->cpu.status = SISA_CPU_STATUS_SYSTEM;
 			break;
 		}
 
@@ -327,7 +323,7 @@ static void sisa_demw_execute(struct sisa_context *sisa)
 			sisa->cpu.pc = sisa->cpu.regfile.system.s1 - 2;
 			break;
 		case SISA_INSTR_SPECIAL_F_GETIID:
-			REGS[INSTR_Rd(instr)] = 0; /* FIXME */
+			REGS[INSTR_Rd(instr)] = sisa->cpu.interrupt;
 			break;
 		case SISA_INSTR_SPECIAL_F_RDS:
 			REGS[INSTR_Rd(instr)] = SREGS[INSTR_Sa(instr)];
@@ -400,15 +396,26 @@ void sisa_step_cycle(struct sisa_context *sisa)
 	case SISA_CPU_STATUS_DEMW:
 		sisa_demw_execute(sisa);
 		sisa->cpu.pc += 2;
-		sisa->cpu.status = SISA_CPU_STATUS_FETCH;
+		if (sisa->cpu.exc_happened)
+			sisa->cpu.status = SISA_CPU_STATUS_SYSTEM;
+		else
+			sisa->cpu.status = SISA_CPU_STATUS_FETCH;
 		break;
 	case SISA_CPU_STATUS_NOP:
 		sisa->cpu.status = SISA_CPU_STATUS_SYSTEM;
 		break;
 	case SISA_CPU_STATUS_SYSTEM:
+		sisa->cpu.regfile.system.s0 = sisa->cpu.regfile.system.s7;
+		sisa->cpu.regfile.system.s1 = sisa->cpu.pc;
+		sisa->cpu.regfile.system.s2 = sisa->cpu.exception;
+		sisa->cpu.pc = sisa->cpu.regfile.system.s5;
+		sisa->cpu.regfile.system.psw.i = 0;
+		sisa->cpu.regfile.system.psw.m = SISA_CPU_MODE_SYSTEM;
 		sisa->cpu.status = SISA_CPU_STATUS_FETCH;
 		break;
 	}
+
+	sisa->cpu.cycles++;
 }
 
 void sisa_load_binary(struct sisa_context *sisa, uint16_t address, void *data, size_t size)

@@ -11,24 +11,26 @@
 #define SISA_DATA_LOAD_ADDR  0x8000
 #define SISA_VGA_START_ADDR  0xA000
 #define SISA_NUM_TLB_ENTRIES 8
+#define SISA_CPU_CLK_FREQ    6250000
+#define SISA_TIMER_FREQ      20
 
 enum sisa_opcode {
-      SISA_OPCODE_ARIT_LOGIC    = 0b0000,
-      SISA_OPCODE_COMPARE       = 0b0001,
-      SISA_OPCODE_ADDI          = 0b0010,
-      SISA_OPCODE_LOAD          = 0b0011,
-      SISA_OPCODE_STORE         = 0b0100,
-      SISA_OPCODE_MOV           = 0b0101,
-      SISA_OPCODE_RELATIVE_JUMP = 0b0110,
-      SISA_OPCODE_IN_OUT        = 0b0111,
-      SISA_OPCODE_MULT_DIV      = 0b1000,
-      SISA_OPCODE_FLOAT_OP      = 0b1001,
-      SISA_OPCODE_ABSOLUTE_JUMP = 0b1010,
-      SISA_OPCODE_LOAD_F        = 0b1011,
-      SISA_OPCODE_STORE_F       = 0b1100,
-      SISA_OPCODE_LOAD_BYTE     = 0b1101,
-      SISA_OPCODE_STORE_BYTE    = 0b1110,
-      SISA_OPCODE_SPECIAL       = 0b1111,
+	SISA_OPCODE_ARIT_LOGIC    = 0b0000,
+	SISA_OPCODE_COMPARE       = 0b0001,
+	SISA_OPCODE_ADDI          = 0b0010,
+	SISA_OPCODE_LOAD          = 0b0011,
+	SISA_OPCODE_STORE         = 0b0100,
+	SISA_OPCODE_MOV           = 0b0101,
+	SISA_OPCODE_RELATIVE_JUMP = 0b0110,
+	SISA_OPCODE_IN_OUT        = 0b0111,
+	SISA_OPCODE_MULT_DIV      = 0b1000,
+	SISA_OPCODE_FLOAT_OP      = 0b1001,
+	SISA_OPCODE_ABSOLUTE_JUMP = 0b1010,
+	SISA_OPCODE_LOAD_F        = 0b1011,
+	SISA_OPCODE_STORE_F       = 0b1100,
+	SISA_OPCODE_LOAD_BYTE     = 0b1101,
+	SISA_OPCODE_STORE_BYTE    = 0b1110,
+	SISA_OPCODE_SPECIAL       = 0b1111,
 };
 
 enum sisa_instr_arit_logic_func {
@@ -107,6 +109,13 @@ enum sisa_exception {
 	SISA_EXCEPTION_INTERRUPT        = 0xF,
 };
 
+enum sisa_interrupt {
+	SISA_INTERRUPT_TIMER    = 0x0,
+	SISA_INTERRUPT_KEY      = 0x1,
+	SISA_INTERRUPT_SWITCH   = 0x4,
+	SISA_EXCEPTION_KEYBOARD = 0x6,
+};
+
 enum sisa_cpu_mode {
 	SISA_CPU_MODE_USER   = 0,
 	SISA_CPU_MODE_SYSTEM = 1,
@@ -168,8 +177,10 @@ struct sisa_cpu {
 	uint16_t ir;
 	enum sisa_cpu_status status;
 	enum sisa_exception exception;
+	enum sisa_interrupt interrupt;
 	int exc_happened;
 	int halted;
+	uint64_t cycles;
 };
 
 struct sisa_context {
