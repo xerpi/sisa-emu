@@ -51,7 +51,7 @@ static void stdin_setup()
 	static struct termios t;
 
 	tcgetattr(STDIN_FILENO, &t);
-	t.c_lflag &= ~ICANON;
+	t.c_lflag &= ~(ICANON | ECHO);
 	tcsetattr(STDIN_FILENO, TCSANOW, &t);
 }
 

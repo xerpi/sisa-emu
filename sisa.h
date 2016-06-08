@@ -32,11 +32,6 @@ enum sisa_opcode {
       SISA_OPCODE_SPECIAL       = 0b1111,
 };
 
-enum sisa_instr_mov_func {
-	SISA_INSTR_ARIT_LOGIC_F_MOVI  = 0b0,
-	SISA_INSTR_ARIT_LOGIC_F_MOVHI = 0b1,
-};
-
 enum sisa_instr_arit_logic_func {
 	SISA_INSTR_ARIT_LOGIC_F_AND = 0b000,
 	SISA_INSTR_ARIT_LOGIC_F_OR  = 0b001,
@@ -46,6 +41,19 @@ enum sisa_instr_arit_logic_func {
 	SISA_INSTR_ARIT_LOGIC_F_SUB = 0b101,
 	SISA_INSTR_ARIT_LOGIC_F_SHA = 0b110,
 	SISA_INSTR_ARIT_LOGIC_F_SHL = 0b111,
+};
+
+enum sisa_instr_compare_func {
+	SISA_INSTR_COMPARE_F_CMPLT  = 0b000,
+	SISA_INSTR_COMPARE_F_CMPLE  = 0b001,
+	SISA_INSTR_COMPARE_F_CMPEQ  = 0b011,
+	SISA_INSTR_COMPARE_F_CMPLTU = 0b100,
+	SISA_INSTR_COMPARE_F_CMPLEU = 0b101,
+};
+
+enum sisa_instr_mov_func {
+	SISA_INSTR_ARIT_LOGIC_F_MOVI  = 0b0,
+	SISA_INSTR_ARIT_LOGIC_F_MOVHI = 0b1,
 };
 
 enum sisa_exception {

@@ -4,6 +4,7 @@
 
 #define X_DOWNTO_Y(val, x, y) (((val) >> (y)) & ((1 << ((x) - (y) + 1)) - 1))
 #define SEXT_5(val)           (((-((val) >> 4)) & ~((1 << 5) - 1)) | (val))
+#define SEXT_6(val)           (((-((val) >> 5)) & ~((1 << 6) - 1)) | (val))
 #define SEXT_8(val)           (((-((val) >> 7)) & ~((1 << 8) - 1)) | (val))
 
 #define INSTR_OPCODE(instr) X_DOWNTO_Y(instr, 15, 12)
@@ -14,8 +15,9 @@
 #define INSTR_Rb_0(instr)   X_DOWNTO_Y(instr, 2, 0)
 #define INSTR_IMM8(instr)   X_DOWNTO_Y(instr, 7, 0)
 
-#define MOV_F_BITS(instr)        X_DOWNTO_Y(instr, 8, 8)
 #define ARIT_LOGIC_F_BITS(instr) X_DOWNTO_Y(instr, 5, 3)
+#define COMPARE_F_BITS(instr)    X_DOWNTO_Y(instr, 5, 3)
+#define MOV_F_BITS(instr)        X_DOWNTO_Y(instr, 8, 8)
 
 #define REGS (sisa->cpu.regfile.general.regs)
 
@@ -60,23 +62,50 @@ void sisa_init(struct sisa_context *sisa)
 	sisa_tlb_init(&sisa->dtlb);
 }
 
-static void sisa_tlb_access(const struct sisa_tlb *tlb, uint8_t vpn, uint8_t *pfn,
-			    uint8_t *v, uint8_t *r, uint8_t *p, uint8_t *miss)
+static int sisa_tlb_access(struct sisa_context *sisa, const struct sisa_tlb *tlb,
+			    uint16_t vaddr, uint16_t *paddr)
 {
 	int i;
+	int found;
+	uint8_t vpn, pfn, v, r, p;
 
+	if (vaddr & 1) {
+		sisa->cpu.exception = SISA_EXCEPTION_UNALIGNED_ACCESS;
+		sisa->cpu.exc_happened = true;
+		return 0;
+	}
+
+	vpn = vaddr >> SISA_PAGE_SHIFT;
+
+	found = 0;
 	for (i = 0; i < SISA_NUM_TLB_ENTRIES; i++) {
 		if (tlb->entries[i].vpn == vpn) {
-			*pfn = tlb->entries[i].pfn;
-			*v = tlb->entries[i].v;
-			*r = tlb->entries[i].r;
-			*p = tlb->entries[i].p;
-			*miss = 0;
-			return;
+			pfn = tlb->entries[i].pfn;
+			v = tlb->entries[i].v;
+			r = tlb->entries[i].r;
+			p = tlb->entries[i].p;
+			found = 1;
+			break;
 		}
 	}
 
-	*miss = 1;
+	if (!found) {
+		sisa->cpu.exception = SISA_EXCEPTION_ITLB_MISS;
+		sisa->cpu.exc_happened = true;
+		return 0;
+	} else if (!v) {
+		sisa->cpu.exception = SISA_EXCEPTION_ITLB_INVALID;
+		sisa->cpu.exc_happened = true;
+		return 0;
+	} else if (p && !(sisa->cpu.regfile.system.s7 & 1)) {
+		sisa->cpu.exception = SISA_EXCEPTION_ITLB_PROTECTED;
+		sisa->cpu.exc_happened = true;
+		return 0;
+	}
+
+	*paddr = pfn << SISA_PAGE_SHIFT | vaddr & (SISA_PAGE_SIZE - 1);
+
+	return 1;
 }
 
 static void sisa_demw_execute(struct sisa_context *sisa)
@@ -84,16 +113,6 @@ static void sisa_demw_execute(struct sisa_context *sisa)
 	const uint16_t instr = sisa->cpu.ir;
 
 	switch (INSTR_OPCODE(instr)) {
-	case SISA_OPCODE_MOV:
-		switch (MOV_F_BITS(instr)) {
-		case SISA_INSTR_ARIT_LOGIC_F_MOVI:
-			REGS[INSTR_Rd(instr)] = SEXT_8(INSTR_IMM8(instr));
-			break;
-		case SISA_INSTR_ARIT_LOGIC_F_MOVHI:
-			REGS[INSTR_Rd(instr)] = INSTR_IMM8(instr) << 8 | REGS[INSTR_Rd(instr)];
-			break;
-		}
-		break;
 	case SISA_OPCODE_ARIT_LOGIC:
 		switch (ARIT_LOGIC_F_BITS(instr)) {
 		case SISA_INSTR_ARIT_LOGIC_F_AND:
@@ -134,6 +153,63 @@ static void sisa_demw_execute(struct sisa_context *sisa)
 		}
 		}
 		break;
+	case SISA_OPCODE_COMPARE:
+		switch (COMPARE_F_BITS(instr)) {
+		case SISA_INSTR_COMPARE_F_CMPLT:
+			REGS[INSTR_Rd(instr)] = (int16_t)REGS[INSTR_Ra_6(instr)] < (int16_t)REGS[INSTR_Rb_0(instr)];
+			break;
+		case SISA_INSTR_COMPARE_F_CMPLE:
+			REGS[INSTR_Rd(instr)] = (int16_t)REGS[INSTR_Ra_6(instr)] <= (int16_t)REGS[INSTR_Rb_0(instr)];
+			break;
+		case SISA_INSTR_COMPARE_F_CMPEQ:
+			REGS[INSTR_Rd(instr)] = REGS[INSTR_Ra_6(instr)] == REGS[INSTR_Rb_0(instr)];
+			break;
+		case SISA_INSTR_COMPARE_F_CMPLTU:
+			REGS[INSTR_Rd(instr)] = REGS[INSTR_Ra_6(instr)] < REGS[INSTR_Rb_0(instr)];
+			break;
+		case SISA_INSTR_COMPARE_F_CMPLEU:
+			REGS[INSTR_Rd(instr)] = REGS[INSTR_Ra_6(instr)] <= REGS[INSTR_Rb_0(instr)];
+			break;
+		}
+		break;
+	case SISA_OPCODE_ADDI:
+		REGS[INSTR_Rd(instr)] = REGS[INSTR_Ra_6(instr)] + SEXT_6(X_DOWNTO_Y(instr, 5, 0));
+		break;
+	case SISA_OPCODE_LOAD: {
+		uint16_t paddr;
+		uint16_t vaddr = REGS[INSTR_Ra_6(instr)] + SEXT_6(X_DOWNTO_Y(instr, 5, 0)) << 1;
+
+		if (!sisa_tlb_access(sisa, &sisa->dtlb, vaddr, &paddr)) {
+			sisa->cpu.status = SISA_CPU_STATUS_SYSTEM;
+			break;
+		}
+
+		REGS[INSTR_Rd(instr)] = sisa->memory[vaddr + 1] << 8 |  sisa->memory[vaddr];
+		break;
+	}
+	case SISA_OPCODE_STORE: {
+		uint16_t paddr;
+		uint16_t vaddr = REGS[INSTR_Ra_6(instr)] + SEXT_6(X_DOWNTO_Y(instr, 5, 0)) << 1;
+
+		if (!sisa_tlb_access(sisa, &sisa->dtlb, vaddr, &paddr)) {
+			sisa->cpu.status = SISA_CPU_STATUS_SYSTEM;
+			break;
+		}
+
+		sisa->memory[vaddr] = REGS[INSTR_Rb_9(instr)] & 0xFF;
+		sisa->memory[vaddr + 1] = REGS[INSTR_Rb_9(instr)] >> 8;
+		break;
+	}
+	case SISA_OPCODE_MOV:
+		switch (MOV_F_BITS(instr)) {
+		case SISA_INSTR_ARIT_LOGIC_F_MOVI:
+			REGS[INSTR_Rd(instr)] = SEXT_8(INSTR_IMM8(instr));
+			break;
+		case SISA_INSTR_ARIT_LOGIC_F_MOVHI:
+			REGS[INSTR_Rd(instr)] = INSTR_IMM8(instr) << 8 | REGS[INSTR_Ra_9(instr)] & 0xFF;
+			break;
+		}
+		break;
 	default:
 		printf("Invalid instruction!\n");
 		break;
@@ -144,38 +220,12 @@ void sisa_step_cycle(struct sisa_context *sisa)
 {
 	switch (sisa->cpu.status) {
 	case SISA_CPU_STATUS_FETCH: {
-		uint8_t vpn, pfn, v, r, p, miss;
 		uint16_t paddr;
 
-		if (sisa->cpu.pc & 1) {
-			sisa->cpu.exception = SISA_EXCEPTION_UNALIGNED_ACCESS;
-			sisa->cpu.exc_happened = true;
+		if (!sisa_tlb_access(sisa, &sisa->itlb, sisa->cpu.pc, &paddr)) {
 			sisa->cpu.status = SISA_CPU_STATUS_NOP;
 			break;
 		}
-
-		vpn = sisa->cpu.pc >> SISA_PAGE_SHIFT;
-
-		sisa_tlb_access(&sisa->itlb, vpn, &pfn, &v, &r, &p, &miss);
-
-		if (miss) {
-			sisa->cpu.exception = SISA_EXCEPTION_ITLB_MISS;
-			sisa->cpu.exc_happened = true;
-			sisa->cpu.status = SISA_CPU_STATUS_NOP;
-			break;
-		} else if (!v) {
-			sisa->cpu.exception = SISA_EXCEPTION_ITLB_INVALID;
-			sisa->cpu.exc_happened = true;
-			sisa->cpu.status = SISA_CPU_STATUS_NOP;
-			break;
-		} else if (p && !(sisa->cpu.regfile.system.s7 & 1)) {
-			sisa->cpu.exception = SISA_EXCEPTION_ITLB_PROTECTED;
-			sisa->cpu.exc_happened = true;
-			sisa->cpu.status = SISA_CPU_STATUS_NOP;
-			break;
-		}
-
-		paddr = pfn << SISA_PAGE_SHIFT | sisa->cpu.pc & (SISA_PAGE_SIZE - 1);
 
 		sisa->cpu.ir = sisa->memory[paddr + 1] << 8 | sisa->memory[paddr];
 		sisa->cpu.status = SISA_CPU_STATUS_DEMW;
