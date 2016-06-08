@@ -9,6 +9,8 @@
 #define MAX_DATA_SIZE   (SISA_VGA_START_ADDR - SISA_DATA_LOAD_ADDR)
 #define MAX_USER_SIZE   (SISA_DATA_LOAD_ADDR - USER_START_ADDR)
 
+static struct termios told;
+
 static void usage(char *argv[])
 {
 	printf("Usage:\n\t%s code.bin <data.bin> <user.bin>\n", argv[0]);
@@ -49,17 +51,21 @@ static int load_file_err(const char *file, void *dst, size_t max_size, const cha
 static void stdin_setup()
 {
 	static struct termios t;
-
 	tcgetattr(STDIN_FILENO, &t);
+	told = t;
 	t.c_lflag &= ~(ICANON | ECHO);
 	tcsetattr(STDIN_FILENO, TCSANOW, &t);
+}
+
+static void stdin_restore()
+{
+	tcsetattr(STDIN_FILENO, TCSANOW, &told);
 }
 
 enum run_mode {
 	RUN_MODE_STEP,
 	RUN_MODE_RUN
 };
-
 
 int main(int argc, char *argv[])
 {
@@ -71,6 +77,7 @@ int main(int argc, char *argv[])
 	int user_size;
 	struct sisa_context sisa;
 	enum run_mode run_mode = RUN_MODE_STEP;
+	int step;
 	char c;
 
 	printf("sisa-emu by xerpi\n");
@@ -105,21 +112,38 @@ int main(int argc, char *argv[])
 	stdin_setup();
 
 	while (1) {
-		if (run_mode == RUN_MODE_STEP) {
+		step = 0;
+		if (run_mode == RUN_MODE_STEP || sisa_cpu_is_halted(&sisa)) {
 			c = getchar();
 			if (c == 's') {
+				step = 1;
+			} else if (c == 'c') {
+				run_mode = RUN_MODE_RUN;
+			} else if (c == 'r') {
+				sisa_init(&sisa);
+				run_mode = RUN_MODE_STEP;
+				printf("CPU reseted\n");
+			} else if (c == 'q') {
+				break;
+			}
+		}
+
+		if (run_mode == RUN_MODE_STEP && step) {
+			if (!sisa_cpu_is_halted(&sisa)) {
 				sisa_print_dump(&sisa);
 				sisa_step_cycle(&sisa);
 				printf("\n");
-			} else if (c == 'r') {
-				run_mode = RUN_MODE_RUN;
 			}
 		} else if (run_mode == RUN_MODE_RUN) {
-			sisa_print_dump(&sisa);
-			sisa_step_cycle(&sisa);
-			printf("\n");
+			if (!sisa_cpu_is_halted(&sisa)) {
+				sisa_print_dump(&sisa);
+				sisa_step_cycle(&sisa);
+				printf("\n");
+			}
 		}
 	}
+
+	stdin_restore();
 
 	return 0;
 }

@@ -3,7 +3,6 @@
 
 #include <stdint.h>
 #include <stddef.h>
-#include <stdbool.h>
 
 #define SISA_MEMORY_SIZE     (1 << 16)
 #define SISA_PAGE_SHIFT      12
@@ -77,6 +76,21 @@ enum sisa_instr_absolute_jump_func {
 	SISA_INSTR_ABSOLUTE_JUMP_F_CALLS = 0b111,
 };
 
+enum sisa_instr_special_func {
+	SISA_INSTR_SPECIAL_F_EI     = 0b100000,
+	SISA_INSTR_SPECIAL_F_DI     = 0b100001,
+	SISA_INSTR_SPECIAL_F_RETI   = 0b100100,
+	SISA_INSTR_SPECIAL_F_GETIID = 0b101000,
+	SISA_INSTR_SPECIAL_F_RDS    = 0b101100,
+	SISA_INSTR_SPECIAL_F_WRS    = 0b110000,
+	SISA_INSTR_SPECIAL_F_WRPI   = 0b110100,
+	SISA_INSTR_SPECIAL_F_WRVI   = 0b110101,
+	SISA_INSTR_SPECIAL_F_WRPD   = 0b110110,
+	SISA_INSTR_SPECIAL_F_WRVD   = 0b110111,
+	SISA_INSTR_SPECIAL_F_FLUSH  = 0b111000,
+	SISA_INSTR_SPECIAL_F_HALT   = 0b111111,
+};
+
 enum sisa_exception {
 	SISA_EXCEPTION_ILLEGAL_INSTR    = 0x0,
 	SISA_EXCEPTION_UNALIGNED_ACCESS = 0x1,
@@ -91,6 +105,11 @@ enum sisa_exception {
 	SISA_EXCEPTION_PROTECTED_INSTR  = 0xD,
 	SISA_EXCEPTION_CALLS            = 0xE,
 	SISA_EXCEPTION_INTERRUPT        = 0xF,
+};
+
+enum sisa_cpu_mode {
+	SISA_CPU_MODE_USER   = 0,
+	SISA_CPU_MODE_SYSTEM = 1,
 };
 
 enum sisa_cpu_status {
@@ -134,7 +153,13 @@ struct sisa_cpu {
 				uint16_t s4;
 				uint16_t s5;
 				uint16_t s6;
-				uint16_t s7;
+				union {
+					uint16_t s7;
+					struct {
+						uint16_t m: 1;
+						uint16_t i: 1;
+					} psw;
+				};
 			};
 			uint16_t regs[8];
 		} system;
@@ -143,7 +168,8 @@ struct sisa_cpu {
 	uint16_t ir;
 	enum sisa_cpu_status status;
 	enum sisa_exception exception;
-	bool exc_happened;
+	int exc_happened;
+	int halted;
 };
 
 struct sisa_context {
@@ -156,6 +182,7 @@ struct sisa_context {
 void sisa_init(struct sisa_context *sisa);
 void sisa_step_cycle(struct sisa_context *sisa);
 void sisa_load_binary(struct sisa_context *sisa, uint16_t address, void *data, size_t size);
+int sisa_cpu_is_halted(struct sisa_context *sisa);
 void sisa_print_dump(struct sisa_context *sisa);
 
 #endif

@@ -13,6 +13,8 @@
 #define INSTR_Ra_6(instr)   X_DOWNTO_Y(instr, 8, 6)
 #define INSTR_Rb_9(instr)   X_DOWNTO_Y(instr, 11, 9)
 #define INSTR_Rb_0(instr)   X_DOWNTO_Y(instr, 2, 0)
+#define INSTR_Sd(instr)     X_DOWNTO_Y(instr, 11, 9)
+#define INSTR_Sa(instr)     X_DOWNTO_Y(instr, 8, 6)
 #define INSTR_IMM8(instr)   X_DOWNTO_Y(instr, 7, 0)
 
 #define ARIT_LOGIC_F_BITS(instr)    X_DOWNTO_Y(instr, 5, 3)
@@ -21,8 +23,10 @@
 #define RELATIVE_JUMP_F_BITS(instr) X_DOWNTO_Y(instr, 8, 8)
 #define MULT_DIV_F_BITS(instr)      X_DOWNTO_Y(instr, 5, 3)
 #define ABSOLUTE_JUMP_F_BITS(instr) X_DOWNTO_Y(instr, 2, 0)
+#define SPECIAL_F_BITS(instr)       X_DOWNTO_Y(instr, 5, 0)
 
-#define REGS (sisa->cpu.regfile.general.regs)
+#define REGS  (sisa->cpu.regfile.general.regs)
+#define SREGS (sisa->cpu.regfile.system.regs)
 
 static void sisa_tlb_init(struct sisa_tlb *tlb)
 {
@@ -57,9 +61,11 @@ static void sisa_tlb_init(struct sisa_tlb *tlb)
 void sisa_init(struct sisa_context *sisa)
 {
 	sisa->cpu.pc = SISA_CODE_LOAD_ADDR;
-	sisa->cpu.regfile.system.s7 = 1;
+	sisa->cpu.regfile.system.psw.i = 0;
+	sisa->cpu.regfile.system.psw.m = SISA_CPU_MODE_SYSTEM;
 	sisa->cpu.status = SISA_CPU_STATUS_FETCH;
-	sisa->cpu.exc_happened = false;
+	sisa->cpu.exc_happened = 0;
+	sisa->cpu.halted = 0;
 
 	sisa_tlb_init(&sisa->itlb);
 	sisa_tlb_init(&sisa->dtlb);
@@ -74,7 +80,7 @@ static int sisa_tlb_access(struct sisa_context *sisa, const struct sisa_tlb *tlb
 
 	if (word_access && vaddr & 1) {
 		sisa->cpu.exception = SISA_EXCEPTION_UNALIGNED_ACCESS;
-		sisa->cpu.exc_happened = true;
+		sisa->cpu.exc_happened = 1;
 		return 0;
 	}
 
@@ -94,15 +100,15 @@ static int sisa_tlb_access(struct sisa_context *sisa, const struct sisa_tlb *tlb
 
 	if (!found) {
 		sisa->cpu.exception = SISA_EXCEPTION_ITLB_MISS;
-		sisa->cpu.exc_happened = true;
+		sisa->cpu.exc_happened = 1;
 		return 0;
 	} else if (!v) {
 		sisa->cpu.exception = SISA_EXCEPTION_ITLB_INVALID;
-		sisa->cpu.exc_happened = true;
+		sisa->cpu.exc_happened = 1;
 		return 0;
 	} else if (p && !(sisa->cpu.regfile.system.s7 & 1)) {
 		sisa->cpu.exception = SISA_EXCEPTION_ITLB_PROTECTED;
-		sisa->cpu.exc_happened = true;
+		sisa->cpu.exc_happened = 1;
 		return 0;
 	}
 
@@ -241,7 +247,7 @@ static void sisa_demw_execute(struct sisa_context *sisa)
 		case SISA_INSTR_MULT_DIV_F_DIV:
 			if (REGS[INSTR_Rb_0(instr)] == 0) {
 				sisa->cpu.exception = SISA_EXCEPTION_DIVISION_BY_ZERO;
-				sisa->cpu.exc_happened = true;
+				sisa->cpu.exc_happened = 1;
 				break;
 			}
 			REGS[INSTR_Rd(instr)] = (int16_t)REGS[INSTR_Ra_6(instr)] / (int16_t)REGS[INSTR_Rb_0(instr)];
@@ -249,7 +255,7 @@ static void sisa_demw_execute(struct sisa_context *sisa)
 		case SISA_INSTR_MULT_DIV_F_DIVU:
 			if (REGS[INSTR_Rb_0(instr)] == 0) {
 				sisa->cpu.exception = SISA_EXCEPTION_DIVISION_BY_ZERO;
-				sisa->cpu.exc_happened = true;
+				sisa->cpu.exc_happened = 1;
 				break;
 			}
 			REGS[INSTR_Rd(instr)] = REGS[INSTR_Ra_6(instr)] / REGS[INSTR_Rb_0(instr)];
@@ -279,7 +285,8 @@ static void sisa_demw_execute(struct sisa_context *sisa)
 			sisa->cpu.regfile.system.s1 = sisa->cpu.pc + 2;
 			sisa->cpu.pc = sisa->cpu.regfile.system.s5 - 2;
 			sisa->cpu.regfile.system.s0 = sisa->cpu.regfile.system.s7;
-			sisa->cpu.regfile.system.s7 = 0b01;
+			sisa->cpu.regfile.system.psw.i = 0;
+			sisa->cpu.regfile.system.psw.m = SISA_CPU_MODE_SYSTEM;
 			break;
 		}
 		break;
@@ -308,6 +315,63 @@ static void sisa_demw_execute(struct sisa_context *sisa)
 		break;
 	}
 	case SISA_OPCODE_SPECIAL:
+		switch (SPECIAL_F_BITS(instr)) {
+		case SISA_INSTR_SPECIAL_F_EI:
+			sisa->cpu.regfile.system.psw.i = 1;
+			break;
+		case SISA_INSTR_SPECIAL_F_DI:
+			sisa->cpu.regfile.system.psw.i = 0;
+			break;
+		case SISA_INSTR_SPECIAL_F_RETI:
+			sisa->cpu.regfile.system.s7 = sisa->cpu.regfile.system.s0;
+			sisa->cpu.pc = sisa->cpu.regfile.system.s1 - 2;
+			break;
+		case SISA_INSTR_SPECIAL_F_GETIID:
+			REGS[INSTR_Rd(instr)] = 0; /* FIXME */
+			break;
+		case SISA_INSTR_SPECIAL_F_RDS:
+			REGS[INSTR_Rd(instr)] = SREGS[INSTR_Sa(instr)];
+			break;
+		case SISA_INSTR_SPECIAL_F_WRS:
+			SREGS[INSTR_Sd(instr)] = REGS[INSTR_Ra_6(instr)];
+			break;
+		case SISA_INSTR_SPECIAL_F_WRPI: {
+			uint8_t entry = REGS[INSTR_Ra_6(instr)];
+			uint16_t value = REGS[INSTR_Rb_9(instr)];
+			sisa->itlb.entries[entry].pfn = X_DOWNTO_Y(value, 3, 0);
+			sisa->itlb.entries[entry].r = X_DOWNTO_Y(value, 4, 4);
+			sisa->itlb.entries[entry].v = X_DOWNTO_Y(value, 5, 5);
+			sisa->itlb.entries[entry].p = X_DOWNTO_Y(value, 6, 6);
+			break;
+		}
+		case SISA_INSTR_SPECIAL_F_WRVI: {
+			uint8_t entry = REGS[INSTR_Ra_6(instr)];
+			uint16_t value = REGS[INSTR_Rb_9(instr)];
+			sisa->dtlb.entries[entry].pfn = X_DOWNTO_Y(value, 3, 0);
+			sisa->dtlb.entries[entry].r = X_DOWNTO_Y(value, 4, 4);
+			sisa->dtlb.entries[entry].v = X_DOWNTO_Y(value, 5, 5);
+			sisa->dtlb.entries[entry].p = X_DOWNTO_Y(value, 6, 6);
+			break;
+		}
+		case SISA_INSTR_SPECIAL_F_WRPD: {
+			uint8_t entry = REGS[INSTR_Ra_6(instr)];
+			uint16_t value = REGS[INSTR_Rb_9(instr)];
+			sisa->itlb.entries[entry].vpn = X_DOWNTO_Y(value, 3, 0);
+			break;
+		}
+		case SISA_INSTR_SPECIAL_F_WRVD: {
+			uint8_t entry = REGS[INSTR_Ra_6(instr)];
+			uint16_t value = REGS[INSTR_Rb_9(instr)];
+			sisa->dtlb.entries[entry].vpn = X_DOWNTO_Y(value, 3, 0);
+			break;
+		}
+		case SISA_INSTR_SPECIAL_F_FLUSH:
+			break;
+		case SISA_INSTR_SPECIAL_F_HALT:
+			sisa->cpu.halted = 1;
+			printf("CPU halted\n");
+			break;
+		}
 		break;
 	default:
 		printf("Invalid instruction!\n");
@@ -317,6 +381,9 @@ static void sisa_demw_execute(struct sisa_context *sisa)
 
 void sisa_step_cycle(struct sisa_context *sisa)
 {
+	if (sisa->cpu.halted)
+		return;
+
 	switch (sisa->cpu.status) {
 	case SISA_CPU_STATUS_FETCH: {
 		uint16_t paddr;
@@ -347,6 +414,11 @@ void sisa_step_cycle(struct sisa_context *sisa)
 void sisa_load_binary(struct sisa_context *sisa, uint16_t address, void *data, size_t size)
 {
 	memcpy(sisa->memory + address, data, size);
+}
+
+int sisa_cpu_is_halted(struct sisa_context *sisa)
+{
+	return sisa->cpu.halted;
 }
 
 void sisa_print_dump(struct sisa_context *sisa)
