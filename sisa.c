@@ -15,9 +15,12 @@
 #define INSTR_Rb_0(instr)   X_DOWNTO_Y(instr, 2, 0)
 #define INSTR_IMM8(instr)   X_DOWNTO_Y(instr, 7, 0)
 
-#define ARIT_LOGIC_F_BITS(instr) X_DOWNTO_Y(instr, 5, 3)
-#define COMPARE_F_BITS(instr)    X_DOWNTO_Y(instr, 5, 3)
-#define MOV_F_BITS(instr)        X_DOWNTO_Y(instr, 8, 8)
+#define ARIT_LOGIC_F_BITS(instr)    X_DOWNTO_Y(instr, 5, 3)
+#define COMPARE_F_BITS(instr)       X_DOWNTO_Y(instr, 5, 3)
+#define MOV_F_BITS(instr)           X_DOWNTO_Y(instr, 8, 8)
+#define RELATIVE_JUMP_F_BITS(instr) X_DOWNTO_Y(instr, 8, 8)
+#define MULT_DIV_F_BITS(instr)      X_DOWNTO_Y(instr, 5, 3)
+#define ABSOLUTE_JUMP_F_BITS(instr) X_DOWNTO_Y(instr, 2, 0)
 
 #define REGS (sisa->cpu.regfile.general.regs)
 
@@ -202,11 +205,81 @@ static void sisa_demw_execute(struct sisa_context *sisa)
 	}
 	case SISA_OPCODE_MOV:
 		switch (MOV_F_BITS(instr)) {
-		case SISA_INSTR_ARIT_LOGIC_F_MOVI:
+		case SISA_INSTR_MOV_F_MOVI:
 			REGS[INSTR_Rd(instr)] = SEXT_8(INSTR_IMM8(instr));
 			break;
-		case SISA_INSTR_ARIT_LOGIC_F_MOVHI:
+		case SISA_INSTR_MOV_F_MOVHI:
 			REGS[INSTR_Rd(instr)] = INSTR_IMM8(instr) << 8 | REGS[INSTR_Ra_9(instr)] & 0xFF;
+			break;
+		}
+		break;
+	case SISA_OPCODE_RELATIVE_JUMP:
+		switch (RELATIVE_JUMP_F_BITS(instr)) {
+		case SISA_INSTR_RELATIVE_JUMP_F_BZ:
+			if (REGS[INSTR_Rb_9(instr)] == 0) {
+				sisa->cpu.pc += INSTR_IMM8(instr) << 1;
+			}
+			break;
+		case SISA_INSTR_RELATIVE_JUMP_F_BNZ:
+			if (REGS[INSTR_Rb_9(instr)] != 0) {
+				sisa->cpu.pc += INSTR_IMM8(instr) << 1;
+			}
+			break;
+		}
+		break;
+	case SISA_OPCODE_MULT_DIV:
+		switch (MULT_DIV_F_BITS(instr)) {
+		case SISA_INSTR_MULT_DIV_F_MUL:
+			REGS[INSTR_Rd(instr)] = REGS[INSTR_Ra_6(instr)] * REGS[INSTR_Rb_0(instr)];
+			break;
+		case SISA_INSTR_MULT_DIV_F_MULH:
+			REGS[INSTR_Rd(instr)] = ((int32_t)REGS[INSTR_Ra_6(instr)] * (int32_t)REGS[INSTR_Rb_0(instr)]) >> 16;
+			break;
+		case SISA_INSTR_MULT_DIV_F_MULHU:
+			REGS[INSTR_Rd(instr)] = ((uint32_t)REGS[INSTR_Ra_6(instr)] * (uint32_t)REGS[INSTR_Rb_0(instr)]) >> 16;
+			break;
+		case SISA_INSTR_MULT_DIV_F_DIV:
+			if (REGS[INSTR_Rb_0(instr)] == 0) {
+				sisa->cpu.exception = SISA_EXCEPTION_DIVISION_BY_ZERO;
+				sisa->cpu.exc_happened = true;
+				break;
+			}
+			REGS[INSTR_Rd(instr)] = (int16_t)REGS[INSTR_Ra_6(instr)] / (int16_t)REGS[INSTR_Rb_0(instr)];
+			break;
+		case SISA_INSTR_MULT_DIV_F_DIVU:
+			if (REGS[INSTR_Rb_0(instr)] == 0) {
+				sisa->cpu.exception = SISA_EXCEPTION_DIVISION_BY_ZERO;
+				sisa->cpu.exc_happened = true;
+				break;
+			}
+			REGS[INSTR_Rd(instr)] = REGS[INSTR_Ra_6(instr)] / REGS[INSTR_Rb_0(instr)];
+			break;
+		}
+		break;
+	case SISA_OPCODE_ABSOLUTE_JUMP:
+		switch (ABSOLUTE_JUMP_F_BITS(instr)) {
+		case SISA_INSTR_ABSOLUTE_JUMP_F_JZ:
+			if (REGS[INSTR_Rb_9(instr)] == 0) {
+				sisa->cpu.pc = REGS[INSTR_Ra_6(instr)] - 2;
+			}
+			break;
+		case SISA_INSTR_ABSOLUTE_JUMP_F_JNZ:
+			if (REGS[INSTR_Rb_9(instr)] != 0) {
+				sisa->cpu.pc = REGS[INSTR_Ra_6(instr)] - 2;
+			}
+			break;
+		case SISA_INSTR_ABSOLUTE_JUMP_F_JMP:
+			sisa->cpu.pc = REGS[INSTR_Ra_6(instr)] - 2;
+			break;
+		case SISA_INSTR_ABSOLUTE_JUMP_F_JAL:
+			REGS[INSTR_Rd(instr)] = sisa->cpu.pc + 2;
+			sisa->cpu.pc = REGS[INSTR_Ra_6(instr)] - 2;
+			break;
+		case SISA_INSTR_ABSOLUTE_JUMP_F_CALLS:
+			sisa->cpu.regfile.system.s1 = sisa->cpu.pc + 2;
+			sisa->cpu.pc = sisa->cpu.regfile.system.s5 - 2;
+			sisa->cpu.regfile.system.s0 = sisa->cpu.regfile.system.s7;
+			sisa->cpu.regfile.system.s7 = 0b01;
 			break;
 		}
 		break;
@@ -238,6 +311,9 @@ void sisa_step_cycle(struct sisa_context *sisa)
 		break;
 	case SISA_CPU_STATUS_NOP:
 		sisa->cpu.status = SISA_CPU_STATUS_SYSTEM;
+		break;
+	case SISA_CPU_STATUS_SYSTEM:
+		sisa->cpu.status = SISA_CPU_STATUS_FETCH;
 		break;
 	}
 }

@@ -52,8 +52,29 @@ enum sisa_instr_compare_func {
 };
 
 enum sisa_instr_mov_func {
-	SISA_INSTR_ARIT_LOGIC_F_MOVI  = 0b0,
-	SISA_INSTR_ARIT_LOGIC_F_MOVHI = 0b1,
+	SISA_INSTR_MOV_F_MOVI  = 0b0,
+	SISA_INSTR_MOV_F_MOVHI = 0b1,
+};
+
+enum sisa_instr_relative_jump_func {
+	SISA_INSTR_RELATIVE_JUMP_F_BZ  = 0b0,
+	SISA_INSTR_RELATIVE_JUMP_F_BNZ = 0b1,
+};
+
+enum sisa_instr_mult_div_func {
+	SISA_INSTR_MULT_DIV_F_MUL   = 0b000,
+	SISA_INSTR_MULT_DIV_F_MULH  = 0b001,
+	SISA_INSTR_MULT_DIV_F_MULHU = 0b010,
+	SISA_INSTR_MULT_DIV_F_DIV   = 0b100,
+	SISA_INSTR_MULT_DIV_F_DIVU  = 0b101,
+};
+
+enum sisa_instr_absolute_jump_func {
+	SISA_INSTR_ABSOLUTE_JUMP_F_JZ    = 0b000,
+	SISA_INSTR_ABSOLUTE_JUMP_F_JNZ   = 0b001,
+	SISA_INSTR_ABSOLUTE_JUMP_F_JMP   = 0b011,
+	SISA_INSTR_ABSOLUTE_JUMP_F_JAL   = 0b100,
+	SISA_INSTR_ABSOLUTE_JUMP_F_CALLS = 0b111,
 };
 
 enum sisa_exception {
