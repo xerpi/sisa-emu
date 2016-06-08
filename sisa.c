@@ -293,6 +293,7 @@ static void sisa_demw_execute(struct sisa_context *sisa)
 			break;
 		}
 		case SISA_INSTR_ABSOLUTE_JUMP_F_CALLS:
+			sisa->cpu.regfile.system.s3 = REGS[INSTR_Ra_6(instr)];
 			sisa->cpu.exception = SISA_EXCEPTION_CALLS;
 			sisa->cpu.exc_happened = 1;
 			break;
@@ -426,6 +427,8 @@ void sisa_step_cycle(struct sisa_context *sisa)
 		sisa->cpu.regfile.system.psw.i = 0;
 		sisa->cpu.regfile.system.psw.m = SISA_CPU_MODE_SYSTEM;
 		sisa->cpu.status = SISA_CPU_STATUS_FETCH;
+		/* Is this the best place to clear the exception flag? */
+		sisa->cpu.exc_happened = 0;
 		break;
 	}
 
