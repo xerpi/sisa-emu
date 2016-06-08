@@ -222,12 +222,12 @@ static void sisa_demw_execute(struct sisa_context *sisa)
 		switch (RELATIVE_JUMP_F_BITS(instr)) {
 		case SISA_INSTR_RELATIVE_JUMP_F_BZ:
 			if (REGS[INSTR_Rb_9(instr)] == 0) {
-				sisa->cpu.pc += INSTR_IMM8(instr) << 1;
+				sisa->cpu.pc += (int8_t)INSTR_IMM8(instr) << 1;
 			}
 			break;
 		case SISA_INSTR_RELATIVE_JUMP_F_BNZ:
 			if (REGS[INSTR_Rb_9(instr)] != 0) {
-				sisa->cpu.pc += INSTR_IMM8(instr) << 1;
+				sisa->cpu.pc += (int8_t)INSTR_IMM8(instr) << 1;
 			}
 			break;
 		}
