@@ -193,8 +193,9 @@ struct sisa_context {
 void sisa_init(struct sisa_context *sisa);
 void sisa_step_cycle(struct sisa_context *sisa);
 void sisa_load_binary(struct sisa_context *sisa, uint16_t address, void *data, size_t size);
-int sisa_cpu_is_halted(struct sisa_context *sisa);
-void sisa_print_dump(struct sisa_context *sisa);
-void sisa_print_tlb_dump(struct sisa_context *sisa);
+int sisa_cpu_is_halted(const struct sisa_context *sisa);
+void sisa_print_dump(const struct sisa_context *sisa);
+void sisa_print_tlb_dump(const struct sisa_context *sisa);
+void sisa_print_vga_dump(const struct sisa_context *sisa);
 
 #endif

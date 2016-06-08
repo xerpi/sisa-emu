@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <string.h>
+#include <ctype.h>
 #include "sisa.h"
 
 #define X_DOWNTO_Y(val, x, y) (((val) >> (y)) & ((1 << ((x) - (y) + 1)) - 1))
@@ -436,12 +437,12 @@ void sisa_load_binary(struct sisa_context *sisa, uint16_t address, void *data, s
 	memcpy(sisa->memory + address, data, size);
 }
 
-int sisa_cpu_is_halted(struct sisa_context *sisa)
+int sisa_cpu_is_halted(const struct sisa_context *sisa)
 {
 	return sisa->cpu.halted;
 }
 
-void sisa_print_dump(struct sisa_context *sisa)
+void sisa_print_dump(const struct sisa_context *sisa)
 {
 	int i;
 
@@ -458,7 +459,7 @@ void sisa_print_dump(struct sisa_context *sisa)
 	}
 }
 
-void sisa_print_tlb_dump(struct sisa_context *sisa)
+void sisa_print_tlb_dump(const struct sisa_context *sisa)
 {
 	int i;
 	const struct sisa_tlb *itlb = &sisa->itlb;
@@ -481,4 +482,34 @@ void sisa_print_tlb_dump(struct sisa_context *sisa)
 			dtlb->entries[i].r, dtlb->entries[i].v,
 			dtlb->entries[i].p);
 	}
+}
+
+void sisa_print_vga_dump(const struct sisa_context *sisa)
+{
+	int i, j;
+	const int num_cols = 80;
+	const int num_rows = 30;
+	char c;
+
+	for (i = 0; i < num_cols + 2; i++)
+		putchar('-');
+
+	putchar('\n');
+
+	for (i = 0; i < num_rows; i++) {
+		putchar('|');
+		for (j = 0; j < num_cols; j++) {
+			c = sisa->memory[SISA_VGA_START_ADDR + (i * num_cols + j) * 2];
+			if (isgraph(c))
+				putchar(c);
+			else
+				putchar(' ');
+		}
+		puts("|");
+	}
+
+	for (i = 0; i < num_cols + 2; i++)
+		putchar('-');
+
+	putchar('\n');
 }

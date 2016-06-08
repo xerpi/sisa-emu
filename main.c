@@ -130,6 +130,8 @@ int main(int argc, char *argv[])
 				printf("CPU reseted\n");
 			} else if (c == 't') {
 				sisa_print_tlb_dump(&sisa);
+			} else if (c == 'v') {
+				sisa_print_vga_dump(&sisa);
 			} else if (c == 'q') {
 				break;
 			}
