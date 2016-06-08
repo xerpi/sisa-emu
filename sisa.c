@@ -66,13 +66,13 @@ void sisa_init(struct sisa_context *sisa)
 }
 
 static int sisa_tlb_access(struct sisa_context *sisa, const struct sisa_tlb *tlb,
-			    uint16_t vaddr, uint16_t *paddr)
+			    uint16_t vaddr, uint16_t *paddr, int word_access)
 {
 	int i;
 	int found;
 	uint8_t vpn, pfn, v, r, p;
 
-	if (vaddr & 1) {
+	if (word_access && vaddr & 1) {
 		sisa->cpu.exception = SISA_EXCEPTION_UNALIGNED_ACCESS;
 		sisa->cpu.exc_happened = true;
 		return 0;
@@ -182,7 +182,7 @@ static void sisa_demw_execute(struct sisa_context *sisa)
 		uint16_t paddr;
 		uint16_t vaddr = REGS[INSTR_Ra_6(instr)] + SEXT_6(X_DOWNTO_Y(instr, 5, 0)) << 1;
 
-		if (!sisa_tlb_access(sisa, &sisa->dtlb, vaddr, &paddr)) {
+		if (!sisa_tlb_access(sisa, &sisa->dtlb, vaddr, &paddr, 1)) {
 			sisa->cpu.status = SISA_CPU_STATUS_SYSTEM;
 			break;
 		}
@@ -194,7 +194,7 @@ static void sisa_demw_execute(struct sisa_context *sisa)
 		uint16_t paddr;
 		uint16_t vaddr = REGS[INSTR_Ra_6(instr)] + SEXT_6(X_DOWNTO_Y(instr, 5, 0)) << 1;
 
-		if (!sisa_tlb_access(sisa, &sisa->dtlb, vaddr, &paddr)) {
+		if (!sisa_tlb_access(sisa, &sisa->dtlb, vaddr, &paddr, 1)) {
 			sisa->cpu.status = SISA_CPU_STATUS_SYSTEM;
 			break;
 		}
@@ -283,6 +283,32 @@ static void sisa_demw_execute(struct sisa_context *sisa)
 			break;
 		}
 		break;
+	case SISA_OPCODE_LOAD_BYTE: {
+		uint16_t paddr;
+		uint16_t vaddr = REGS[INSTR_Ra_6(instr)] + SEXT_6(X_DOWNTO_Y(instr, 5, 0)) << 1;
+
+		if (!sisa_tlb_access(sisa, &sisa->dtlb, vaddr, &paddr, 0)) {
+			sisa->cpu.status = SISA_CPU_STATUS_SYSTEM;
+			break;
+		}
+
+		REGS[INSTR_Rd(instr)] = SEXT_8(sisa->memory[vaddr]);
+		break;
+	}
+	case SISA_OPCODE_STORE_BYTE: {
+		uint16_t paddr;
+		uint16_t vaddr = REGS[INSTR_Ra_6(instr)] + SEXT_6(X_DOWNTO_Y(instr, 5, 0)) << 1;
+
+		if (!sisa_tlb_access(sisa, &sisa->dtlb, vaddr, &paddr, 0)) {
+			sisa->cpu.status = SISA_CPU_STATUS_SYSTEM;
+			break;
+		}
+
+		sisa->memory[vaddr] = REGS[INSTR_Rb_9(instr)] & 0xFF;
+		break;
+	}
+	case SISA_OPCODE_SPECIAL:
+		break;
 	default:
 		printf("Invalid instruction!\n");
 		break;
@@ -295,7 +321,7 @@ void sisa_step_cycle(struct sisa_context *sisa)
 	case SISA_CPU_STATUS_FETCH: {
 		uint16_t paddr;
 
-		if (!sisa_tlb_access(sisa, &sisa->itlb, sisa->cpu.pc, &paddr)) {
+		if (!sisa_tlb_access(sisa, &sisa->itlb, sisa->cpu.pc, &paddr, 1)) {
 			sisa->cpu.status = SISA_CPU_STATUS_NOP;
 			break;
 		}
