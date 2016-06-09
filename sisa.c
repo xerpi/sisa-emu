@@ -411,10 +411,10 @@ void sisa_step_cycle(struct sisa_context *sisa)
 			if (sisa->cpu.exception != SISA_EXCEPTION_INTERRUPT ||
 			    sisa->cpu.regfile.system.psw.i) {
 				sisa->cpu.status = SISA_CPU_STATUS_SYSTEM;
+				break;
 			}
-		} else {
-			sisa->cpu.status = SISA_CPU_STATUS_FETCH;
 		}
+		sisa->cpu.status = SISA_CPU_STATUS_FETCH;
 		break;
 	case SISA_CPU_STATUS_NOP:
 		sisa->cpu.status = SISA_CPU_STATUS_SYSTEM;
