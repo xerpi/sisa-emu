@@ -203,7 +203,7 @@ static void sisa_demw_execute(struct sisa_context *sisa)
 			break;
 		}
 
-		REGS[INSTR_Rd(instr)] = sisa->memory[vaddr + 1] << 8 |  sisa->memory[vaddr];
+		REGS[INSTR_Rd(instr)] = sisa->memory[paddr + 1] << 8 |  sisa->memory[paddr];
 		break;
 	}
 	case SISA_OPCODE_STORE: {
@@ -214,8 +214,8 @@ static void sisa_demw_execute(struct sisa_context *sisa)
 			break;
 		}
 
-		sisa->memory[vaddr] = REGS[INSTR_Rb_9(instr)] & 0xFF;
-		sisa->memory[vaddr + 1] = REGS[INSTR_Rb_9(instr)] >> 8;
+		sisa->memory[paddr] = REGS[INSTR_Rb_9(instr)] & 0xFF;
+		sisa->memory[paddr + 1] = REGS[INSTR_Rb_9(instr)] >> 8;
 		break;
 	}
 	case SISA_OPCODE_MOV:
@@ -307,7 +307,7 @@ static void sisa_demw_execute(struct sisa_context *sisa)
 			break;
 		}
 
-		REGS[INSTR_Rd(instr)] = SEXT_8(sisa->memory[vaddr]);
+		REGS[INSTR_Rd(instr)] = SEXT_8(sisa->memory[paddr]);
 		break;
 	}
 	case SISA_OPCODE_STORE_BYTE: {
@@ -318,7 +318,7 @@ static void sisa_demw_execute(struct sisa_context *sisa)
 			break;
 		}
 
-		sisa->memory[vaddr] = REGS[INSTR_Rb_9(instr)] & 0xFF;
+		sisa->memory[paddr] = REGS[INSTR_Rb_9(instr)] & 0xFF;
 		break;
 	}
 	case SISA_OPCODE_SPECIAL:
@@ -376,7 +376,7 @@ static void sisa_demw_execute(struct sisa_context *sisa)
 			break;
 		case SISA_INSTR_SPECIAL_F_HALT:
 			sisa->cpu.halted = 1;
-			printf("CPU halted\n");
+			printf("CPU halted at 0x%02X\n", sisa->cpu.pc);
 			break;
 		}
 		break;
@@ -433,6 +433,13 @@ void sisa_step_cycle(struct sisa_context *sisa)
 	}
 
 	sisa->cpu.cycles++;
+
+	/* Crappy timer interrupt generator */
+	if (sisa->cpu.cycles % 1000 == 0) {
+		sisa->cpu.exception = SISA_EXCEPTION_INTERRUPT;
+		sisa->cpu.interrupt = SISA_INTERRUPT_TIMER;
+		sisa->cpu.exc_happened = 1;
+	}
 }
 
 void sisa_load_binary(struct sisa_context *sisa, uint16_t address, void *data, size_t size)
