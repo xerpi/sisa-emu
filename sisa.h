@@ -62,6 +62,11 @@ enum sisa_instr_relative_jump_func {
 	SISA_INSTR_RELATIVE_JUMP_F_BNZ = 0b1,
 };
 
+enum sisa_instr_in_out_func {
+	SISA_INSTR_IN_OUT_F_IN  = 0b0,
+	SISA_INSTR_IN_OUT_F_OUT = 0b1,
+};
+
 enum sisa_instr_mult_div_func {
 	SISA_INSTR_MULT_DIV_F_MUL   = 0b000,
 	SISA_INSTR_MULT_DIV_F_MULH  = 0b001,

@@ -22,6 +22,7 @@
 #define COMPARE_F_BITS(instr)       X_DOWNTO_Y(instr, 5, 3)
 #define MOV_F_BITS(instr)           X_DOWNTO_Y(instr, 8, 8)
 #define RELATIVE_JUMP_F_BITS(instr) X_DOWNTO_Y(instr, 8, 8)
+#define IN_OUT_F_BITS(instr)        X_DOWNTO_Y(instr, 8, 8)
 #define MULT_DIV_F_BITS(instr)      X_DOWNTO_Y(instr, 5, 3)
 #define ABSOLUTE_JUMP_F_BITS(instr) X_DOWNTO_Y(instr, 2, 0)
 #define SPECIAL_F_BITS(instr)       X_DOWNTO_Y(instr, 5, 0)
@@ -106,6 +107,7 @@ static int sisa_tlb_access(struct sisa_context *sisa, const struct sisa_tlb *tlb
 		else
 			sisa->cpu.exception = SISA_EXCEPTION_DTLB_MISS;
 		sisa->cpu.exc_happened = 1;
+		sisa->cpu.regfile.system.s3 = vaddr;
 		return 0;
 	} else if (!v) {
 		if (&sisa->itlb == tlb)
@@ -113,6 +115,7 @@ static int sisa_tlb_access(struct sisa_context *sisa, const struct sisa_tlb *tlb
 		else
 			sisa->cpu.exception = SISA_EXCEPTION_DTLB_INVALID;
 		sisa->cpu.exc_happened = 1;
+		sisa->cpu.regfile.system.s3 = vaddr;
 		return 0;
 	} else if (p && sisa->cpu.regfile.system.psw.m == SISA_CPU_MODE_USER) {
 		if (&sisa->itlb == tlb)
@@ -120,6 +123,7 @@ static int sisa_tlb_access(struct sisa_context *sisa, const struct sisa_tlb *tlb
 		else
 			sisa->cpu.exception = SISA_EXCEPTION_DTLB_PROTECTED;
 		sisa->cpu.exc_happened = 1;
+		sisa->cpu.regfile.system.s3 = vaddr;
 		return 0;
 	}
 
@@ -239,6 +243,16 @@ static void sisa_demw_execute(struct sisa_context *sisa)
 			if (REGS[INSTR_Rb_9(instr)] != 0) {
 				sisa->cpu.pc += (int8_t)INSTR_IMM8(instr) << 1;
 			}
+			break;
+		}
+		break;
+	case SISA_OPCODE_IN_OUT:
+		switch (IN_OUT_F_BITS(instr)) {
+		case SISA_INSTR_IN_OUT_F_IN:
+			/* STUBBED */
+			break;
+		case SISA_INSTR_IN_OUT_F_OUT:
+			/* STUBBED */
 			break;
 		}
 		break;
@@ -376,12 +390,13 @@ static void sisa_demw_execute(struct sisa_context *sisa)
 			break;
 		case SISA_INSTR_SPECIAL_F_HALT:
 			sisa->cpu.halted = 1;
-			printf("CPU halted at 0x%02X\n", sisa->cpu.pc);
+			printf("CPU halted at 0x%04X\n", sisa->cpu.pc);
 			break;
 		}
 		break;
 	default:
-		printf("Invalid instruction!\n");
+		sisa->cpu.halted = 1;
+		printf("Invalid instruction at 0x%04X\n", sisa->cpu.pc);
 		break;
 	}
 }
@@ -435,7 +450,7 @@ void sisa_step_cycle(struct sisa_context *sisa)
 	sisa->cpu.cycles++;
 
 	/* Crappy timer interrupt generator */
-	if (sisa->cpu.cycles % 1000 == 0) {
+	if (sisa->cpu.cycles % 8000 == 0) {
 		sisa->cpu.exception = SISA_EXCEPTION_INTERRUPT;
 		sisa->cpu.interrupt = SISA_INTERRUPT_TIMER;
 		sisa->cpu.exc_happened = 1;
