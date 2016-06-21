@@ -18,6 +18,21 @@ static void usage(char *argv[])
 		"Usage:\n\t%s code.bin <data.bin> <user.bin>\n", argv[0]);
 }
 
+static void print_help()
+{
+	printf(
+		"Help:\n"
+		"s - do step\n"
+		"c - continue\n"
+		"r - reset\n"
+		"i - info registers\n"
+		"t - info TLB\n"
+		"v - dump VGA\n"
+		"h - show this help\n"
+		"q - quit\n\n"
+	);
+}
+
 static size_t fp_get_size(FILE *fp)
 {
 	size_t size;
@@ -79,7 +94,7 @@ int main(int argc, char *argv[])
 	int user_size;
 	struct sisa_context sisa;
 	enum run_mode run_mode = RUN_MODE_STEP;
-	int step;
+	int do_step;
 	char c;
 	uint16_t continue_addr;
 
@@ -126,11 +141,11 @@ int main(int argc, char *argv[])
 	printf("Address 0x%04X reached.\n", continue_addr);
 
 	while (1) {
-		step = 0;
+		do_step = 0;
 		if (run_mode == RUN_MODE_STEP || sisa_cpu_is_halted(&sisa)) {
 			c = getchar();
 			if (c == 's') {
-				step = 1;
+				do_step = 1;
 			} else if (c == 'c') {
 				run_mode = RUN_MODE_RUN;
 			} else if (c == 'r') {
@@ -143,12 +158,14 @@ int main(int argc, char *argv[])
 				sisa_print_tlb_dump(&sisa);
 			} else if (c == 'v') {
 				sisa_print_vga_dump(&sisa);
+			} else if (c == 'h') {
+				print_help();
 			} else if (c == 'q') {
 				break;
 			}
 		}
 
-		if (run_mode == RUN_MODE_STEP && step) {
+		if (run_mode == RUN_MODE_STEP && do_step) {
 			if (!sisa_cpu_is_halted(&sisa)) {
 				sisa_print_dump(&sisa);
 				sisa_step_cycle(&sisa);
