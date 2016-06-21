@@ -84,6 +84,7 @@ static int sisa_tlb_access(struct sisa_context *sisa, const struct sisa_tlb *tlb
 	if (word_access && vaddr & 1) {
 		sisa->cpu.exception = SISA_EXCEPTION_UNALIGNED_ACCESS;
 		sisa->cpu.exc_happened = 1;
+		sisa->cpu.regfile.system.s3 = vaddr;
 		return 0;
 	}
 
