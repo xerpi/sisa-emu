@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <termios.h>
 #include <unistd.h>
 #include "sisa.h"
@@ -13,7 +14,8 @@ static struct termios told;
 
 static void usage(char *argv[])
 {
-	printf("Usage:\n\t%s code.bin <data.bin> <user.bin>\n", argv[0]);
+	printf("Source code: https://github.com/xerpi/sisa-emu\n"
+		"Usage:\n\t%s code.bin <data.bin> <user.bin>\n", argv[0]);
 }
 
 static size_t fp_get_size(FILE *fp)
@@ -79,6 +81,7 @@ int main(int argc, char *argv[])
 	enum run_mode run_mode = RUN_MODE_STEP;
 	int step;
 	char c;
+	uint16_t continue_addr;
 
 	printf("sisa-emu by xerpi\n");
 
@@ -111,10 +114,16 @@ int main(int argc, char *argv[])
 
 	stdin_setup();
 
-	while (sisa.cpu.pc != 0x1000) {
+	if (argc > 4)
+		continue_addr = strtol(argv[4], NULL, 16);
+	else
+		continue_addr = USER_START_ADDR;
+
+	while (sisa.cpu.pc != continue_addr && !sisa_cpu_is_halted(&sisa)) {
 		sisa_step_cycle(&sisa);
 	}
-	printf("User code reached.\n");
+
+	printf("Address 0x%04X reached.\n", continue_addr);
 
 	while (1) {
 		step = 0;
@@ -128,6 +137,8 @@ int main(int argc, char *argv[])
 				sisa_init(&sisa);
 				run_mode = RUN_MODE_STEP;
 				printf("CPU reseted\n");
+			} else if (c == 'i') {
+				sisa_print_dump(&sisa);
 			} else if (c == 't') {
 				sisa_print_tlb_dump(&sisa);
 			} else if (c == 'v') {
@@ -148,6 +159,8 @@ int main(int argc, char *argv[])
 				sisa_print_dump(&sisa);
 				sisa_step_cycle(&sisa);
 				printf("\n");
+			} else {
+				run_mode = RUN_MODE_STEP;
 			}
 		}
 	}
