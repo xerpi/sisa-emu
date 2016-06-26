@@ -72,6 +72,7 @@ void sisa_init(struct sisa_context *sisa)
 
 	sisa_tlb_init(&sisa->itlb);
 	sisa_tlb_init(&sisa->dtlb);
+	sisa->tlb_enabled = 1;
 }
 
 static int sisa_tlb_access(struct sisa_context *sisa, const struct sisa_tlb *tlb,
@@ -80,6 +81,11 @@ static int sisa_tlb_access(struct sisa_context *sisa, const struct sisa_tlb *tlb
 	int i;
 	int found;
 	uint8_t vpn, pfn, v, r, p;
+
+	if (!sisa->tlb_enabled) {
+		*paddr = vaddr;
+		return 1;
+	}
 
 	if (word_access && vaddr & 1) {
 		sisa->cpu.exception = SISA_EXCEPTION_UNALIGNED_ACCESS;
@@ -466,6 +472,16 @@ void sisa_load_binary(struct sisa_context *sisa, uint16_t address, void *data, s
 int sisa_cpu_is_halted(const struct sisa_context *sisa)
 {
 	return sisa->cpu.halted;
+}
+
+void sisa_tlb_set_enabled(struct sisa_context *sisa, int enabled)
+{
+	sisa->tlb_enabled = enabled;
+}
+
+int sisa_tlb_is_enabled(const struct sisa_context *sisa)
+{
+	return sisa->tlb_enabled;
 }
 
 void sisa_print_dump(const struct sisa_context *sisa)
