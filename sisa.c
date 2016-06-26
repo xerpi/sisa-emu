@@ -474,6 +474,11 @@ int sisa_cpu_is_halted(const struct sisa_context *sisa)
 	return sisa->cpu.halted;
 }
 
+void sisa_set_pc(struct sisa_context *sisa, uint16_t pc)
+{
+	sisa->cpu.pc = pc;
+}
+
 void sisa_tlb_set_enabled(struct sisa_context *sisa, int enabled)
 {
 	sisa->tlb_enabled = enabled;
@@ -499,6 +504,8 @@ void sisa_print_dump(const struct sisa_context *sisa)
 	for (i = 0; i < 8; i++) {
 		printf("r%i: 0x%04X\n", i, sisa->cpu.regfile.general.regs[i]);
 	}
+
+	putchar('\n');
 }
 
 void sisa_print_tlb_dump(const struct sisa_context *sisa)
@@ -524,6 +531,8 @@ void sisa_print_tlb_dump(const struct sisa_context *sisa)
 			dtlb->entries[i].r, dtlb->entries[i].v,
 			dtlb->entries[i].p);
 	}
+
+	putchar('\n');
 }
 
 void sisa_print_vga_dump(const struct sisa_context *sisa)

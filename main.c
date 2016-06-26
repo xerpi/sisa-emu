@@ -1,21 +1,42 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <string.h>
 #include <termios.h>
 #include <unistd.h>
+#include <getopt.h>
+#include <errno.h>
 #include "sisa.h"
 
-#define USER_START_ADDR 0x1000
-#define MAX_CODE_SIZE   (SISA_MEMORY_SIZE - SISA_CODE_LOAD_ADDR)
-#define MAX_DATA_SIZE   (SISA_VGA_START_ADDR - SISA_DATA_LOAD_ADDR)
-#define MAX_USER_SIZE   (SISA_DATA_LOAD_ADDR - USER_START_ADDR)
+#define xstr(a) str(a)
+#define str(a) #a
+
+enum run_mode {
+	RUN_MODE_STEP,
+	RUN_MODE_RUN
+};
 
 static struct termios told;
 
 static void usage(char *argv[])
 {
-	printf("Source code: https://github.com/xerpi/sisa-emu\n"
-		"Usage:\n\t%s code.bin <data.bin> <user.bin>\n", argv[0]);
+	printf("Source code: https://github.com/xerpi/sisa-emu\n\n"
+		"Usage: %s [OPTIONS] code.bin <data.bin>\n\n"
+		"  -t, --enable-tlb      enables the TLB\n"
+		"                          (defaults to disabled)\n"
+		"  -c, --code-addr=ADDR  address where to load the code at\n"
+		"                          (defaults to " xstr(SISA_CODE_LOAD_ADDR) ")\n"
+		"  -d, --data-addr=ADDR  address where to load the data at\n"
+		"                          (defaults to " xstr(SISA_DATA_LOAD_ADDR) ")\n"
+		"  -p, --pc-addr=ADDR    initial address of the PC\n"
+		"                          (defaults to " xstr(SISA_CODE_LOAD_ADDR) ")\n"
+		"  -l, --load addr=ADDR,file=FILE loads FILE to ADDR\n"
+		"  -h, --help            displays this help and exit\n"
+		"\nExample:\n"
+		"\t./sisa-emu -t -l addr=0x1000,file=user.bin syscode.bin sysdata.bin\n\n"
+		"\t Will enable the TLB and load 'user.bin' to 0x1000, syscode.bin to " xstr(SISA_CODE_LOAD_ADDR)
+		" and 'sysdata.bin' to " xstr(SISA_DATA_LOAD_ADDR) "\n"
+		, argv[0]);
 }
 
 static void print_help()
@@ -33,38 +54,6 @@ static void print_help()
 	);
 }
 
-static size_t fp_get_size(FILE *fp)
-{
-	size_t size;
-
-	fseek(fp, 0, SEEK_END);
-	size = ftell(fp);
-	rewind(fp);
-
-	return size;
-}
-
-static int load_file_err(const char *file, void *dst, size_t max_size, const char *err_size)
-{
-	FILE *fp;
-	int read_size;
-
-	if ((fp = fopen(file, "rb")) == NULL) {
-		printf("Error opening: %s\n", file);
-		return -1;
-	}
-
-	if (fp_get_size(fp) > max_size) {
-		printf("%s\n", err_size);
-		return -1;
-	}
-
-	read_size = fread(dst, 1, max_size, fp);
-	fclose(fp);
-
-	return read_size;
-}
-
 static void stdin_setup()
 {
 	static struct termios t;
@@ -79,24 +68,121 @@ static void stdin_restore()
 	tcsetattr(STDIN_FILENO, TCSANOW, &told);
 }
 
-enum run_mode {
-	RUN_MODE_STEP,
-	RUN_MODE_RUN
+static size_t fp_get_size(FILE *fp)
+{
+	size_t size;
+
+	fseek(fp, 0, SEEK_END);
+	size = ftell(fp);
+	rewind(fp);
+
+	return size;
+}
+
+static int load_file(struct sisa_context *sisa, const char *file, uint16_t addr)
+{
+	FILE *fp;
+	size_t size;
+	size_t read_size;
+	void *buffer;
+
+	if (!(fp = fopen(file, "rb"))) {
+		printf("Error opening '%s': %s\n", file, strerror(errno));
+		return 0;
+	}
+
+	size = fp_get_size(fp);
+
+	if (SISA_MEMORY_SIZE - addr < size) {
+		printf("Error loading '%s': size limit exceeded\n", file);
+		return 0;
+	}
+
+	buffer = malloc(size);
+	read_size = fread(buffer, 1, size, fp);
+
+	sisa_load_binary(sisa, addr, buffer, read_size);
+
+	free(buffer);
+	fclose(fp);
+
+	printf("Loaded '%s' at address 0x%04X\n", file, addr);
+
+	return 1;
+}
+
+enum load_subopt {
+	ADDR_OPT = 0,
+	FILE_OPT
 };
+
+static char *const load_subopt_token[] = {
+	[ADDR_OPT] = "addr",
+	[FILE_OPT] = "file",
+	NULL
+};
+
+static int parse_load_subopt(struct sisa_context *sisa, char *optarg)
+{
+	char *value;
+	char *subopts = optarg;
+	uint16_t load_addr = 0;
+	char *load_file_name = NULL;
+
+	while (*subopts != '\0') {
+		switch (getsubopt(&subopts, load_subopt_token, &value)) {
+		case ADDR_OPT:
+			if (!value)
+				return -1;
+
+			load_addr = strtol(value, NULL, 16);
+			break;
+		case FILE_OPT:
+			if (!value)
+				return -1;
+
+			if (load_file_name)
+				free(load_file_name);
+
+			load_file_name = strdup(value);
+			break;
+		}
+	}
+
+	if (load_file_name) {
+		if (!load_file(sisa, load_file_name, load_addr)) {
+			free(load_file_name);
+			return 0;
+		}
+		free(load_file_name);
+	}
+
+	return 1;
+}
 
 int main(int argc, char *argv[])
 {
-	uint8_t code[MAX_CODE_SIZE];
-	uint8_t data[MAX_DATA_SIZE];
-	uint8_t user[MAX_USER_SIZE];
-	int code_size;
-	int data_size;
-	int user_size;
 	struct sisa_context sisa;
 	enum run_mode run_mode = RUN_MODE_STEP;
 	int do_step;
 	char c;
 	uint16_t continue_addr;
+
+	int opt;
+	int enable_tlb = 0;
+	uint16_t code_addr = SISA_CODE_LOAD_ADDR;
+	uint16_t data_addr = SISA_DATA_LOAD_ADDR;
+	uint16_t pc_addr = SISA_CODE_LOAD_ADDR;
+
+	struct option long_options[] = {
+		{"enable-tlb", no_argument, NULL, 't'},
+		{"code-addr", required_argument, NULL, 'c'},
+		{"data-addr", required_argument, NULL, 'd'},
+		{"pc-addr", required_argument, NULL, 'p'},
+		{"help", no_argument, NULL, 'h'},
+		{"load", required_argument, NULL, 'l'},
+		{NULL, 0, NULL, 0}
+	};
 
 	printf("sisa-emu by xerpi\n");
 
@@ -107,38 +193,55 @@ int main(int argc, char *argv[])
 
 	sisa_init(&sisa);
 
-	if ((code_size = load_file_err(argv[1], code, MAX_CODE_SIZE, "code size limit exceeded.")) < 0)
-		return -1;
-
-	printf("loaded 0x%04X bytes of code\n", code_size);
-	sisa_load_binary(&sisa, SISA_CODE_LOAD_ADDR, code, code_size);
-
-	if (argc > 2) {
-		if ((data_size = load_file_err(argv[2], data, MAX_DATA_SIZE, "data size limit exceeded.")) < 0)
+	while ((opt = getopt_long(argc, argv, "tc:d:l:p:h", long_options, NULL)) != -1) {
+		switch (opt) {
+		case 't':
+			enable_tlb = 1;
+			break;
+		case 'c':
+			code_addr = strtol(optarg, NULL, 16);
+			break;
+		case 'd':
+			data_addr = strtol(optarg, NULL, 16);
+			break;
+		case 'p':
+			pc_addr = strtol(optarg, NULL, 16);
+			break;
+		case 'h':
+			usage(argv);
 			return -1;
-		printf("loaded 0x%04X bytes of data\n", data_size);
-		sisa_load_binary(&sisa, SISA_DATA_LOAD_ADDR, data, data_size);
+		case 'l':
+			if (!parse_load_subopt(&sisa, optarg))
+				return -1;
+			break;
+		}
 	}
 
-	if (argc > 3) {
-		if ((user_size = load_file_err(argv[3], user, MAX_USER_SIZE, "user size limit exceeded.")) < 0)
+	argc -= optind;
+	argv += optind;
+
+	/* If there are any arguments left, they are the plain
+	 * code (and data) file arguments. */
+
+	if (argc > 0) {
+		if (!load_file(&sisa, argv[0], code_addr))
 			return -1;
-		printf("loaded 0x%04X bytes of user\n", user_size);
-		sisa_load_binary(&sisa, USER_START_ADDR, user, user_size);
 	}
+
+	if (argc > 1) {
+		if (!load_file(&sisa, argv[1], data_addr))
+			return -1;
+	}
+
+	sisa_tlb_set_enabled(&sisa, enable_tlb);
+	sisa_set_pc(&sisa, pc_addr);
+
+	printf("TLB enabled: %s\n", enable_tlb ? "yes" : "no");
+	printf("Code load address: 0x%04X\n", code_addr);
+	printf("Data load address: 0x%04X\n", data_addr);
+	printf("PC address: 0x%04X\n", pc_addr);
 
 	stdin_setup();
-
-	if (argc > 4)
-		continue_addr = strtol(argv[4], NULL, 16);
-	else
-		continue_addr = USER_START_ADDR;
-
-	while (sisa.cpu.pc != continue_addr && !sisa_cpu_is_halted(&sisa)) {
-		sisa_step_cycle(&sisa);
-	}
-
-	printf("Address 0x%04X reached.\n", continue_addr);
 
 	while (1) {
 		do_step = 0;
@@ -167,15 +270,15 @@ int main(int argc, char *argv[])
 
 		if (run_mode == RUN_MODE_STEP && do_step) {
 			if (!sisa_cpu_is_halted(&sisa)) {
-				sisa_print_dump(&sisa);
 				sisa_step_cycle(&sisa);
-				printf("\n");
+				sisa_print_dump(&sisa);
 			}
 		} else if (run_mode == RUN_MODE_RUN) {
 			if (!sisa_cpu_is_halted(&sisa)) {
-				sisa_print_dump(&sisa);
 				sisa_step_cycle(&sisa);
-				printf("\n");
+				sisa_print_vga_dump(&sisa);
+				sisa_print_dump(&sisa);
+				printf("\e[1;1H\e[2J");
 			} else {
 				run_mode = RUN_MODE_STEP;
 			}

@@ -200,6 +200,7 @@ void sisa_init(struct sisa_context *sisa);
 void sisa_step_cycle(struct sisa_context *sisa);
 void sisa_load_binary(struct sisa_context *sisa, uint16_t address, void *data, size_t size);
 int sisa_cpu_is_halted(const struct sisa_context *sisa);
+void sisa_set_pc(struct sisa_context *sisa, uint16_t pc);
 void sisa_tlb_set_enabled(struct sisa_context *sisa, int enabled);
 int sisa_tlb_is_enabled(const struct sisa_context *sisa);
 void sisa_print_dump(const struct sisa_context *sisa);
