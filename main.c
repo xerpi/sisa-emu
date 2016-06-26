@@ -36,6 +36,8 @@ static void usage(char *argv[])
 		"\t./sisa-emu -t -l addr=0x1000,file=user.bin syscode.bin sysdata.bin\n\n"
 		"\t Will enable the TLB and load 'user.bin' to 0x1000, syscode.bin to " xstr(SISA_CODE_LOAD_ADDR)
 		" and 'sysdata.bin' to " xstr(SISA_DATA_LOAD_ADDR) "\n"
+		"\nNote: when loading a file, if the filename ends with .bin it will be loaded as\n"
+		"raw binary, and as text (ASCII) otherwise (for example if it ends with .hex).\n"
 		, argv[0]);
 }
 
@@ -79,7 +81,8 @@ static size_t fp_get_size(FILE *fp)
 	return size;
 }
 
-static int load_file(struct sisa_context *sisa, const char *file, uint16_t addr)
+
+static int load_file_bin(struct sisa_context *sisa, const char *file, uint16_t addr)
 {
 	FILE *fp;
 	size_t size;
@@ -95,6 +98,7 @@ static int load_file(struct sisa_context *sisa, const char *file, uint16_t addr)
 
 	if (SISA_MEMORY_SIZE - addr < size) {
 		printf("Error loading '%s': size limit exceeded\n", file);
+		fclose(fp);
 		return 0;
 	}
 
@@ -109,6 +113,67 @@ static int load_file(struct sisa_context *sisa, const char *file, uint16_t addr)
 	printf("Loaded '%s' at address 0x%04X\n", file, addr);
 
 	return 1;
+}
+
+static int load_file_hex(struct sisa_context *sisa, const char *file, uint16_t addr)
+{
+	FILE *fp;
+	int ret;
+	size_t size;
+	size_t read_size;
+	uint16_t *buffer;
+	uint16_t word;
+	uint16_t offset = 0;
+	const uint16_t max_size = SISA_MEMORY_SIZE - addr;
+
+	if (!(fp = fopen(file, "r"))) {
+		printf("Error opening '%s': %s\n", file, strerror(errno));
+		return 0;
+	}
+
+	buffer = malloc(max_size);
+
+	while (2 * offset < max_size) {
+		ret = fscanf(fp, "%4hx", &word);
+		if (ret == -1) {
+			if (errno != 0) {
+				printf("Error loading '%s': %s\n", file,
+					strerror(errno));
+				free(buffer);
+				fclose(fp);
+				return 0;
+			} else {
+				break;
+			}
+		}
+
+		if (ret == EOF || ret == 0)
+			break;
+
+		buffer[offset] = word;
+		offset++;
+	}
+
+	sisa_load_binary(sisa, addr, buffer, 2 * offset);
+
+	free(buffer);
+	fclose(fp);
+
+	printf("Loaded '%s' at address 0x%04X\n", file, addr);
+
+	return 1;
+}
+
+
+static int load_file(struct sisa_context *sisa, const char *file, uint16_t addr)
+{
+	const char *ext = strrchr(file, '.');
+
+	if (ext != NULL && strcmp(ext + 1, "bin") == 0) {
+		return load_file_bin(sisa, file, addr);
+	} else {
+		return load_file_hex(sisa, file, addr);
+	}
 }
 
 enum load_subopt {
