@@ -78,6 +78,7 @@ void sisa_init(struct sisa_context *sisa)
 	for (i = 0; i < SISA_NUM_IO_PORTS; i++)
 		sisa->io_ports[i] = 0;
 
+	sisa->cpu.kb_key_buffer = 0;
 	sisa_tlb_init(&sisa->itlb);
 	sisa_tlb_init(&sisa->dtlb);
 	sisa->tlb_enabled = 1;
@@ -271,9 +272,23 @@ static void sisa_demw_execute(struct sisa_context *sisa)
 		case SISA_INSTR_IN_OUT_F_IN:
 			REGS[INSTR_Rd(instr)] = sisa->io_ports[INSTR_IMM8(instr)];
 			break;
-		case SISA_INSTR_IN_OUT_F_OUT:
-			sisa->io_ports[INSTR_IMM8(instr)] = REGS[INSTR_Rb_9(instr)];
+		case SISA_INSTR_IN_OUT_F_OUT: {
+			uint8_t port = INSTR_IMM8(instr);
+			sisa->io_ports[port] = REGS[INSTR_Rb_9(instr)];
+
+			/* If there's a pending key in the kb buffer, copy it to the I/O port */
+			if (port == SISA_IO_PORT_KB_CLEAR_CHAR && sisa->cpu.kb_key_buffer) {
+				sisa->io_ports[SISA_IO_PORT_KB_READ_CHAR] = sisa->cpu.kb_key_buffer;
+				sisa->io_ports[SISA_IO_PORT_KB_DATA_READY] = 1;
+				sisa->cpu.ints_pending |= BIT(SISA_INTERRUPT_KEYBOARD);
+				sisa->cpu.kb_key_buffer = 0;
+			} else {
+				sisa->io_ports[SISA_IO_PORT_KB_READ_CHAR] = 0;
+				sisa->io_ports[SISA_IO_PORT_KB_DATA_READY] = 0;
+			}
+
 			break;
+		}
 		}
 		break;
 	case SISA_OPCODE_MULT_DIV:
@@ -515,35 +530,31 @@ void sisa_keys_set(struct sisa_context *sisa, uint8_t keys)
 	uint8_t current_keys = sisa->io_ports[SISA_IO_PORT_KEYS];
 
 	if (current_keys ^ keys) {
-		/* If there isn't a pending keys int, generate it */
-		if (!(sisa->cpu.ints_pending & BIT(SISA_INTERRUPT_KEY)))
-			sisa->cpu.ints_pending |= BIT(SISA_INTERRUPT_KEY);
-
 		sisa->io_ports[SISA_IO_PORT_KEYS] = keys;
+		sisa->cpu.ints_pending |= BIT(SISA_INTERRUPT_KEY);
 	}
 }
 
 void sisa_switches_set(struct sisa_context *sisa, uint16_t switches)
 {
-	uint8_t current_switches = sisa->io_ports[SISA_IO_PORT_SWITCHES];
+	uint16_t current_switches = sisa->io_ports[SISA_IO_PORT_SWITCHES];
 
 	if (current_switches ^ switches) {
-		/* If there isn't a pending switch int, generate it */
-		if (!(sisa->cpu.ints_pending & BIT(SISA_INTERRUPT_SWITCH)))
-			sisa->cpu.ints_pending |= BIT(SISA_INTERRUPT_SWITCH);
-
 		sisa->io_ports[SISA_IO_PORT_SWITCHES] = switches;
+		sisa->cpu.ints_pending |= BIT(SISA_INTERRUPT_SWITCH);
 	}
 }
 
 void sisa_keyboard_press(struct sisa_context *sisa, uint8_t key)
 {
-	sisa->cpu.kb_key_buffer = key;
-}
-
-void sisa_keyboard_release(struct sisa_context *sisa)
-{
-	sisa->cpu.kb_key_buffer = 0;
+	if (sisa->io_ports[SISA_IO_PORT_KB_READ_CHAR]) {
+		sisa->cpu.kb_key_buffer = key;
+	} else {
+		sisa->io_ports[SISA_IO_PORT_KB_READ_CHAR] = key;
+		sisa->io_ports[SISA_IO_PORT_KB_DATA_READY] = 1;
+		sisa->cpu.ints_pending |= BIT(SISA_INTERRUPT_KEYBOARD);
+		sisa->cpu.kb_key_buffer = 0;
+	}
 }
 
 void sisa_print_dump(const struct sisa_context *sisa)

@@ -226,7 +226,6 @@ int sisa_tlb_is_enabled(const struct sisa_context *sisa);
 void sisa_keys_set(struct sisa_context *sisa, uint8_t keys);
 void sisa_switches_set(struct sisa_context *sisa, uint16_t switches);
 void sisa_keyboard_press(struct sisa_context *sisa, uint8_t key);
-void sisa_keyboard_release(struct sisa_context *sisa);
 
 void sisa_print_dump(const struct sisa_context *sisa);
 void sisa_print_tlb_dump(const struct sisa_context *sisa);
