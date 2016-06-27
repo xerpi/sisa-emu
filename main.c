@@ -21,8 +21,10 @@ static struct termios told;
 static void usage(char *argv[])
 {
 	printf("Source code: https://github.com/xerpi/sisa-emu\n\n"
-		"Usage: %s [OPTIONS] code.bin <data.bin>\n\n"
+		"Usage: %s [OPTIONS] <code.bin> <data.bin>\n\n"
 		"  -t, --enable-tlb      enables the TLB\n"
+		"                          (defaults to disabled)\n"
+		"  -v, --show-vga        prints the VGA when in continue mode\n"
 		"                          (defaults to disabled)\n"
 		"  -c, --code-addr=ADDR  address where to load the code at\n"
 		"                          (defaults to " xstr(SISA_CODE_LOAD_ADDR) ")\n"
@@ -34,7 +36,7 @@ static void usage(char *argv[])
 		"  -h, --help            displays this help and exit\n"
 		"\nExample:\n"
 		"\t./sisa-emu -t -l addr=0x1000,file=user.bin syscode.bin sysdata.bin\n\n"
-		"\t Will enable the TLB and load 'user.bin' to 0x1000, syscode.bin to " xstr(SISA_CODE_LOAD_ADDR)
+		"\t Will enable the TLB and load 'user.bin' to 0x1000, 'syscode.bin' to " xstr(SISA_CODE_LOAD_ADDR)
 		" and 'sysdata.bin' to " xstr(SISA_DATA_LOAD_ADDR) "\n"
 		"\nNote: when loading a file, if the filename ends with .bin it will be loaded as\n"
 		"raw binary, and as text (ASCII) otherwise (for example if it ends with .hex).\n"
@@ -46,7 +48,7 @@ static void print_help()
 	printf(
 		"Help:\n"
 		"s - do step\n"
-		"c - continue\n"
+		"c - pause/continue\n"
 		"r - reset\n"
 		"i - info registers\n"
 		"t - info TLB\n"
@@ -70,6 +72,15 @@ static void stdin_restore()
 	tcsetattr(STDIN_FILENO, TCSANOW, &told);
 }
 
+static int kbhit()
+{
+	struct timeval tv = { 0L, 0L };
+	fd_set fds;
+	FD_ZERO(&fds);
+	FD_SET(0, &fds);
+	return select(1, &fds, NULL, NULL, &tv);
+}
+
 static size_t fp_get_size(FILE *fp)
 {
 	size_t size;
@@ -80,7 +91,6 @@ static size_t fp_get_size(FILE *fp)
 
 	return size;
 }
-
 
 static int load_file_bin(struct sisa_context *sisa, const char *file, uint16_t addr)
 {
@@ -119,8 +129,6 @@ static int load_file_hex(struct sisa_context *sisa, const char *file, uint16_t a
 {
 	FILE *fp;
 	int ret;
-	size_t size;
-	size_t read_size;
 	uint16_t *buffer;
 	uint16_t word;
 	uint16_t offset = 0;
@@ -231,16 +239,17 @@ int main(int argc, char *argv[])
 	enum run_mode run_mode = RUN_MODE_STEP;
 	int do_step;
 	char c;
-	uint16_t continue_addr;
 
 	int opt;
 	int enable_tlb = 0;
+	int show_vga = 0;
 	uint16_t code_addr = SISA_CODE_LOAD_ADDR;
 	uint16_t data_addr = SISA_DATA_LOAD_ADDR;
 	uint16_t pc_addr = SISA_CODE_LOAD_ADDR;
 
 	struct option long_options[] = {
 		{"enable-tlb", no_argument, NULL, 't'},
+		{"show-vga", no_argument, NULL, 'v'},
 		{"code-addr", required_argument, NULL, 'c'},
 		{"data-addr", required_argument, NULL, 'd'},
 		{"pc-addr", required_argument, NULL, 'p'},
@@ -258,10 +267,13 @@ int main(int argc, char *argv[])
 
 	sisa_init(&sisa);
 
-	while ((opt = getopt_long(argc, argv, "tc:d:l:p:h", long_options, NULL)) != -1) {
+	while ((opt = getopt_long(argc, argv, "tvc:d:l:p:h", long_options, NULL)) != -1) {
 		switch (opt) {
 		case 't':
 			enable_tlb = 1;
+			break;
+		case 'v':
+			show_vga = 1;
 			break;
 		case 'c':
 			code_addr = strtol(optarg, NULL, 16);
@@ -302,24 +314,32 @@ int main(int argc, char *argv[])
 	sisa_set_pc(&sisa, pc_addr);
 
 	printf("TLB enabled: %s\n", enable_tlb ? "yes" : "no");
+	printf("Show VGA: %s\n", show_vga ? "yes" : "no");
 	printf("Code load address: 0x%04X\n", code_addr);
 	printf("Data load address: 0x%04X\n", data_addr);
-	printf("PC address: 0x%04X\n", pc_addr);
+	printf("PC address: 0x%04X\n\n", pc_addr);
 
 	stdin_setup();
 
 	while (1) {
 		do_step = 0;
-		if (run_mode == RUN_MODE_STEP || sisa_cpu_is_halted(&sisa)) {
+
+		/* Avoid wasting CPU when step mode */
+		if (run_mode == RUN_MODE_STEP ||
+		    (run_mode == RUN_MODE_RUN && kbhit())) {
 			c = getchar();
+
 			if (c == 's') {
 				do_step = 1;
 			} else if (c == 'c') {
-				run_mode = RUN_MODE_RUN;
+				if (run_mode == RUN_MODE_STEP)
+					run_mode = RUN_MODE_RUN;
+				else
+					run_mode = RUN_MODE_STEP;
 			} else if (c == 'r') {
+				printf("CPU reseted\n");
 				sisa_init(&sisa);
 				run_mode = RUN_MODE_STEP;
-				printf("CPU reseted\n");
 			} else if (c == 'i') {
 				sisa_print_dump(&sisa);
 			} else if (c == 't') {
@@ -334,19 +354,22 @@ int main(int argc, char *argv[])
 		}
 
 		if (run_mode == RUN_MODE_STEP && do_step) {
-			if (!sisa_cpu_is_halted(&sisa)) {
-				sisa_step_cycle(&sisa);
-				sisa_print_dump(&sisa);
-			}
+			sisa_step_cycle(&sisa);
+			sisa_print_dump(&sisa);
 		} else if (run_mode == RUN_MODE_RUN) {
-			if (!sisa_cpu_is_halted(&sisa)) {
-				sisa_step_cycle(&sisa);
-				sisa_print_vga_dump(&sisa);
-				sisa_print_dump(&sisa);
+			sisa_step_cycle(&sisa);
+			sisa_print_dump(&sisa);
+
+			if (show_vga) {
+				/* Set cursor to 0,0 */
 				printf("\e[1;1H\e[2J");
-			} else {
-				run_mode = RUN_MODE_STEP;
+				sisa_print_vga_dump(&sisa);
 			}
+		}
+
+		if (sisa_cpu_is_halted(&sisa)) {
+			printf("CPU halted at 0x%04X\n", sisa.cpu.pc);
+			run_mode = RUN_MODE_STEP;
 		}
 	}
 

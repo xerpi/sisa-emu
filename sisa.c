@@ -1,8 +1,10 @@
 #include <stdio.h>
 #include <string.h>
+#include <strings.h>
 #include <ctype.h>
 #include "sisa.h"
 
+#define BIT(n)                (1 << (n))
 #define X_DOWNTO_Y(val, x, y) (((val) >> (y)) & ((1 << ((x) - (y) + 1)) - 1))
 #define SEXT_5(val)           (((-((val) >> 4)) & ~((1 << 5) - 1)) | (val))
 #define SEXT_6(val)           (((-((val) >> 5)) & ~((1 << 6) - 1)) | (val))
@@ -62,13 +64,19 @@ static void sisa_tlb_init(struct sisa_tlb *tlb)
 
 void sisa_init(struct sisa_context *sisa)
 {
+	int i;
+
 	sisa->cpu.pc = SISA_CODE_LOAD_ADDR;
 	sisa->cpu.regfile.system.psw.i = 0;
 	sisa->cpu.regfile.system.psw.m = SISA_CPU_MODE_SYSTEM;
 	sisa->cpu.status = SISA_CPU_STATUS_FETCH;
 	sisa->cpu.exc_happened = 0;
+	sisa->cpu.ints_pending = 0;
 	sisa->cpu.halted = 0;
 	sisa->cpu.cycles = 0;
+
+	for (i = 0; i < SISA_NUM_IO_PORTS; i++)
+		sisa->io_ports[i] = 0;
 
 	sisa_tlb_init(&sisa->itlb);
 	sisa_tlb_init(&sisa->dtlb);
@@ -76,7 +84,7 @@ void sisa_init(struct sisa_context *sisa)
 }
 
 static int sisa_tlb_access(struct sisa_context *sisa, const struct sisa_tlb *tlb,
-			    uint16_t vaddr, uint16_t *paddr, int word_access)
+			    uint16_t vaddr, uint16_t *paddr, int word_access, int write)
 {
 	int i;
 	int found;
@@ -132,9 +140,14 @@ static int sisa_tlb_access(struct sisa_context *sisa, const struct sisa_tlb *tlb
 		sisa->cpu.exc_happened = 1;
 		sisa->cpu.regfile.system.s3 = vaddr;
 		return 0;
+	} else if (r && write) {
+		sisa->cpu.exception = SISA_EXCEPTION_DTLB_READONLY;
+		sisa->cpu.exc_happened = 1;
+		sisa->cpu.regfile.system.s3 = vaddr;
+		return 0;
 	}
 
-	*paddr = pfn << SISA_PAGE_SHIFT | vaddr & (SISA_PAGE_SIZE - 1);
+	*paddr = (pfn << SISA_PAGE_SHIFT) | (vaddr & (SISA_PAGE_SIZE - 1));
 
 	return 1;
 }
@@ -210,7 +223,7 @@ static void sisa_demw_execute(struct sisa_context *sisa)
 		uint16_t paddr;
 		uint16_t vaddr = REGS[INSTR_Ra_6(instr)] + (SEXT_6(X_DOWNTO_Y(instr, 5, 0)) << 1);
 
-		if (!sisa_tlb_access(sisa, &sisa->dtlb, vaddr, &paddr, 1)) {
+		if (!sisa_tlb_access(sisa, &sisa->dtlb, vaddr, &paddr, 1, 0)) {
 			break;
 		}
 
@@ -221,7 +234,7 @@ static void sisa_demw_execute(struct sisa_context *sisa)
 		uint16_t paddr;
 		uint16_t vaddr = REGS[INSTR_Ra_6(instr)] + (SEXT_6(X_DOWNTO_Y(instr, 5, 0)) << 1);
 
-		if (!sisa_tlb_access(sisa, &sisa->dtlb, vaddr, &paddr, 1)) {
+		if (!sisa_tlb_access(sisa, &sisa->dtlb, vaddr, &paddr, 1, 1)) {
 			break;
 		}
 
@@ -235,7 +248,7 @@ static void sisa_demw_execute(struct sisa_context *sisa)
 			REGS[INSTR_Rd(instr)] = SEXT_8(INSTR_IMM8(instr));
 			break;
 		case SISA_INSTR_MOV_F_MOVHI:
-			REGS[INSTR_Rd(instr)] = INSTR_IMM8(instr) << 8 | REGS[INSTR_Ra_9(instr)] & 0xFF;
+			REGS[INSTR_Rd(instr)] = (INSTR_IMM8(instr) << 8) | (REGS[INSTR_Ra_9(instr)] & 0xFF);
 			break;
 		}
 		break;
@@ -256,10 +269,10 @@ static void sisa_demw_execute(struct sisa_context *sisa)
 	case SISA_OPCODE_IN_OUT:
 		switch (IN_OUT_F_BITS(instr)) {
 		case SISA_INSTR_IN_OUT_F_IN:
-			/* STUBBED */
+			REGS[INSTR_Rd(instr)] = sisa->io_ports[INSTR_IMM8(instr)];
 			break;
 		case SISA_INSTR_IN_OUT_F_OUT:
-			/* STUBBED */
+			sisa->io_ports[INSTR_IMM8(instr)] = REGS[INSTR_Rb_9(instr)];
 			break;
 		}
 		break;
@@ -324,7 +337,7 @@ static void sisa_demw_execute(struct sisa_context *sisa)
 		uint16_t paddr;
 		uint16_t vaddr = REGS[INSTR_Ra_6(instr)] + SEXT_6(X_DOWNTO_Y(instr, 5, 0));
 
-		if (!sisa_tlb_access(sisa, &sisa->dtlb, vaddr, &paddr, 0)) {
+		if (!sisa_tlb_access(sisa, &sisa->dtlb, vaddr, &paddr, 0, 0)) {
 			break;
 		}
 
@@ -335,7 +348,7 @@ static void sisa_demw_execute(struct sisa_context *sisa)
 		uint16_t paddr;
 		uint16_t vaddr = REGS[INSTR_Ra_6(instr)] + SEXT_6(X_DOWNTO_Y(instr, 5, 0));
 
-		if (!sisa_tlb_access(sisa, &sisa->dtlb, vaddr, &paddr, 0)) {
+		if (!sisa_tlb_access(sisa, &sisa->dtlb, vaddr, &paddr, 0, 1)) {
 			break;
 		}
 
@@ -354,9 +367,18 @@ static void sisa_demw_execute(struct sisa_context *sisa)
 			sisa->cpu.regfile.system.s7 = sisa->cpu.regfile.system.s0;
 			sisa->cpu.pc = sisa->cpu.regfile.system.s1 - 2;
 			break;
-		case SISA_INSTR_SPECIAL_F_GETIID:
-			REGS[INSTR_Rd(instr)] = sisa->cpu.interrupt;
+		case SISA_INSTR_SPECIAL_F_GETIID: {
+			int lsb = ffs(sisa->cpu.ints_pending);
+
+			/* Clear the highest priority interrupt and return its id */
+			if (lsb) {
+				sisa->cpu.ints_pending &= ~BIT(lsb - 1);
+				REGS[INSTR_Rd(instr)] = lsb - 1;
+			} else {
+				REGS[INSTR_Rd(instr)] = 0;
+			}
 			break;
+		}
 		case SISA_INSTR_SPECIAL_F_RDS:
 			REGS[INSTR_Rd(instr)] = SREGS[INSTR_Sa(instr)];
 			break;
@@ -397,7 +419,6 @@ static void sisa_demw_execute(struct sisa_context *sisa)
 			break;
 		case SISA_INSTR_SPECIAL_F_HALT:
 			sisa->cpu.halted = 1;
-			printf("CPU halted at 0x%04X\n", sisa->cpu.pc);
 			break;
 		}
 		break;
@@ -417,7 +438,7 @@ void sisa_step_cycle(struct sisa_context *sisa)
 	case SISA_CPU_STATUS_FETCH: {
 		uint16_t paddr;
 
-		if (!sisa_tlb_access(sisa, &sisa->itlb, sisa->cpu.pc, &paddr, 1)) {
+		if (!sisa_tlb_access(sisa, &sisa->itlb, sisa->cpu.pc, &paddr, 1, 0)) {
 			sisa->cpu.status = SISA_CPU_STATUS_NOP;
 			break;
 		}
@@ -430,11 +451,13 @@ void sisa_step_cycle(struct sisa_context *sisa)
 		sisa_demw_execute(sisa);
 		sisa->cpu.pc += 2;
 		if (sisa->cpu.exc_happened) {
-			if (sisa->cpu.exception != SISA_EXCEPTION_INTERRUPT ||
-			    sisa->cpu.regfile.system.psw.i) {
-				sisa->cpu.status = SISA_CPU_STATUS_SYSTEM;
-				break;
-			}
+			sisa->cpu.status = SISA_CPU_STATUS_SYSTEM;
+			break;
+		} else if (sisa->cpu.regfile.system.psw.i && sisa->cpu.ints_pending) {
+			sisa->cpu.exception = SISA_EXCEPTION_INTERRUPT;
+			sisa->cpu.exc_happened = 1;
+			sisa->cpu.status = SISA_CPU_STATUS_SYSTEM;
+			break;
 		}
 		sisa->cpu.status = SISA_CPU_STATUS_FETCH;
 		break;
@@ -456,11 +479,9 @@ void sisa_step_cycle(struct sisa_context *sisa)
 
 	sisa->cpu.cycles++;
 
-	/* Crappy timer interrupt generator */
-	if (sisa->cpu.cycles % 8000 == 0) {
-		sisa->cpu.exception = SISA_EXCEPTION_INTERRUPT;
-		sisa->cpu.interrupt = SISA_INTERRUPT_TIMER;
-		sisa->cpu.exc_happened = 1;
+	/* Timer interrupt generator */
+	if (sisa->cpu.cycles % (SISA_CPU_CLK_FREQ / SISA_TIMER_FREQ) == 0) {
+		sisa->cpu.ints_pending |= BIT(SISA_INTERRUPT_TIMER);
 	}
 }
 
@@ -487,6 +508,42 @@ void sisa_tlb_set_enabled(struct sisa_context *sisa, int enabled)
 int sisa_tlb_is_enabled(const struct sisa_context *sisa)
 {
 	return sisa->tlb_enabled;
+}
+
+void sisa_keys_set(struct sisa_context *sisa, uint8_t keys)
+{
+	uint8_t current_keys = sisa->io_ports[SISA_IO_PORT_KEYS];
+
+	if (current_keys ^ keys) {
+		/* If there isn't a pending keys int, generate it */
+		if (!(sisa->cpu.ints_pending & BIT(SISA_INTERRUPT_KEY)))
+			sisa->cpu.ints_pending |= BIT(SISA_INTERRUPT_KEY);
+
+		sisa->io_ports[SISA_IO_PORT_KEYS] = keys;
+	}
+}
+
+void sisa_switches_set(struct sisa_context *sisa, uint16_t switches)
+{
+	uint8_t current_switches = sisa->io_ports[SISA_IO_PORT_SWITCHES];
+
+	if (current_switches ^ switches) {
+		/* If there isn't a pending switch int, generate it */
+		if (!(sisa->cpu.ints_pending & BIT(SISA_INTERRUPT_SWITCH)))
+			sisa->cpu.ints_pending |= BIT(SISA_INTERRUPT_SWITCH);
+
+		sisa->io_ports[SISA_IO_PORT_SWITCHES] = switches;
+	}
+}
+
+void sisa_keyboard_press(struct sisa_context *sisa, uint8_t key)
+{
+	sisa->cpu.kb_key_buffer = key;
+}
+
+void sisa_keyboard_release(struct sisa_context *sisa)
+{
+	sisa->cpu.kb_key_buffer = 0;
 }
 
 void sisa_print_dump(const struct sisa_context *sisa)

@@ -11,8 +11,11 @@
 #define SISA_DATA_LOAD_ADDR  0x8000
 #define SISA_VGA_START_ADDR  0xA000
 #define SISA_NUM_TLB_ENTRIES 8
+#define SISA_NUM_IO_PORTS    256
 #define SISA_CPU_CLK_FREQ    6250000
 #define SISA_TIMER_FREQ      20
+#define SISA_NUM_KEYS        4
+#define SISA_NUM_SWITCHES    10
 
 enum sisa_opcode {
 	SISA_OPCODE_ARIT_LOGIC    = 0b0000,
@@ -117,8 +120,22 @@ enum sisa_exception {
 enum sisa_interrupt {
 	SISA_INTERRUPT_TIMER    = 0x0,
 	SISA_INTERRUPT_KEY      = 0x1,
-	SISA_INTERRUPT_SWITCH   = 0x4,
-	SISA_EXCEPTION_KEYBOARD = 0x6,
+	SISA_INTERRUPT_SWITCH   = 0x2,
+	SISA_INTERRUPT_KEYBOARD = 0x3,
+};
+
+enum sisa_io_port {
+	SISA_IO_PORT_LEDS_GREEN    = 5,
+	SISA_IO_PORT_LEDS_RED      = 6,
+	SISA_IO_PORT_KEYS          = 7,
+	SISA_IO_PORT_SWITCHES      = 8,
+	SISA_IO_PORT_VGA_CURSOR    = 11,
+	SISA_IO_PORT_VGA_CURSOR_EN = 12,
+	SISA_IO_PORT_KB_READ_CHAR  = 15,
+	SISA_IO_PORT_KB_DATA_READY = 16,
+	SISA_IO_PORT_KB_CLEAR_CHAR = 16,
+	SISA_IO_PORT_CYCLES        = 20,
+	SISA_IO_PORT_MILIS_COUNTER = 21,
 };
 
 enum sisa_cpu_mode {
@@ -182,8 +199,9 @@ struct sisa_cpu {
 	uint16_t ir;
 	enum sisa_cpu_status status;
 	enum sisa_exception exception;
-	enum sisa_interrupt interrupt;
 	int exc_happened;
+	uint16_t ints_pending;
+	uint8_t kb_key_buffer;
 	int halted;
 	uint64_t cycles;
 };
@@ -191,6 +209,7 @@ struct sisa_cpu {
 struct sisa_context {
 	struct sisa_cpu cpu;
 	uint8_t memory[SISA_MEMORY_SIZE];
+	uint16_t io_ports[SISA_NUM_IO_PORTS];
 	struct sisa_tlb itlb;
 	struct sisa_tlb dtlb;
 	int tlb_enabled;
@@ -199,10 +218,16 @@ struct sisa_context {
 void sisa_init(struct sisa_context *sisa);
 void sisa_step_cycle(struct sisa_context *sisa);
 void sisa_load_binary(struct sisa_context *sisa, uint16_t address, void *data, size_t size);
+
 int sisa_cpu_is_halted(const struct sisa_context *sisa);
 void sisa_set_pc(struct sisa_context *sisa, uint16_t pc);
 void sisa_tlb_set_enabled(struct sisa_context *sisa, int enabled);
 int sisa_tlb_is_enabled(const struct sisa_context *sisa);
+void sisa_keys_set(struct sisa_context *sisa, uint8_t keys);
+void sisa_switches_set(struct sisa_context *sisa, uint16_t switches);
+void sisa_keyboard_press(struct sisa_context *sisa, uint8_t key);
+void sisa_keyboard_release(struct sisa_context *sisa);
+
 void sisa_print_dump(const struct sisa_context *sisa);
 void sisa_print_tlb_dump(const struct sisa_context *sisa);
 void sisa_print_vga_dump(const struct sisa_context *sisa);

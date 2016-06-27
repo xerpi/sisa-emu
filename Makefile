@@ -2,7 +2,7 @@ TARGET = sisa-emu
 OBJS = main.o sisa.o
 
 CC = gcc
-CFLAGS = -O2 -Wno-unused-result
+CFLAGS = -O2 -Wall -Wno-unused-result
 
 all: $(TARGET)
 
