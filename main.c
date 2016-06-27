@@ -361,6 +361,27 @@ int main(int argc, char *argv[])
 				print_help();
 			} else if (c == 'q') {
 				break;
+			} else {
+				/* Escape sequence */
+				if (c == 27) {
+					getchar();
+					switch (getchar() - 65) {
+					case 0:
+						c = 0x90;
+						break;
+					case 1:
+						c = 0x91;
+						break;
+					case 2:
+						c = 0x93;
+						break;
+					case 3:
+						c = 0x92;
+						break;
+					}
+
+				}
+				sisa_keyboard_press(&sisa, c);
 			}
 		}
 
