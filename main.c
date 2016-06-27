@@ -26,6 +26,8 @@ static void usage(char *argv[])
 		"                          (defaults to disabled)\n"
 		"  -v, --show-vga        prints the VGA when in continue mode\n"
 		"                          (defaults to disabled)\n"
+		"  -s, --speedup=N       executes N steps per iteration in continue mode\n"
+		"                          (defaults to 1)\n"
 		"  -c, --code-addr=ADDR  address where to load the code at\n"
 		"                          (defaults to " xstr(SISA_CODE_LOAD_ADDR) ")\n"
 		"  -d, --data-addr=ADDR  address where to load the data at\n"
@@ -235,6 +237,7 @@ static int parse_load_subopt(struct sisa_context *sisa, char *optarg)
 
 int main(int argc, char *argv[])
 {
+	int i;
 	struct sisa_context sisa;
 	enum run_mode run_mode = RUN_MODE_STEP;
 	int do_step;
@@ -243,6 +246,7 @@ int main(int argc, char *argv[])
 	int opt;
 	int enable_tlb = 0;
 	int show_vga = 0;
+	int speedup = 1;
 	uint16_t code_addr = SISA_CODE_LOAD_ADDR;
 	uint16_t data_addr = SISA_DATA_LOAD_ADDR;
 	uint16_t pc_addr = SISA_CODE_LOAD_ADDR;
@@ -250,6 +254,7 @@ int main(int argc, char *argv[])
 	struct option long_options[] = {
 		{"enable-tlb", no_argument, NULL, 't'},
 		{"show-vga", no_argument, NULL, 'v'},
+		{"speedup", required_argument, NULL, 's'},
 		{"code-addr", required_argument, NULL, 'c'},
 		{"data-addr", required_argument, NULL, 'd'},
 		{"pc-addr", required_argument, NULL, 'p'},
@@ -267,13 +272,18 @@ int main(int argc, char *argv[])
 
 	sisa_init(&sisa);
 
-	while ((opt = getopt_long(argc, argv, "tvc:d:l:p:h", long_options, NULL)) != -1) {
+	while ((opt = getopt_long(argc, argv, "tvs:c:d:l:p:h", long_options, NULL)) != -1) {
 		switch (opt) {
 		case 't':
 			enable_tlb = 1;
 			break;
 		case 'v':
 			show_vga = 1;
+			break;
+		case 's':
+			speedup = strtol(optarg, NULL, 10);
+			if (speedup < 0)
+				speedup = 1;
 			break;
 		case 'c':
 			code_addr = strtol(optarg, NULL, 16);
@@ -315,6 +325,7 @@ int main(int argc, char *argv[])
 
 	printf("TLB enabled: %s\n", enable_tlb ? "yes" : "no");
 	printf("Show VGA: %s\n", show_vga ? "yes" : "no");
+	printf("Run mode speedup: %d\n", speedup);
 	printf("Code load address: 0x%04X\n", code_addr);
 	printf("Data load address: 0x%04X\n", data_addr);
 	printf("PC address: 0x%04X\n\n", pc_addr);
@@ -357,7 +368,10 @@ int main(int argc, char *argv[])
 			sisa_step_cycle(&sisa);
 			sisa_print_dump(&sisa);
 		} else if (run_mode == RUN_MODE_RUN) {
-			sisa_step_cycle(&sisa);
+			/* Do as many cycles as the speedup */
+			for (i = 0; i < speedup; i++)
+				sisa_step_cycle(&sisa);
+
 			sisa_print_dump(&sisa);
 
 			if (show_vga) {
