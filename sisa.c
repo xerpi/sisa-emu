@@ -511,6 +511,15 @@ void sisa_step_cycle(struct sisa_context *sisa)
 	if (sisa->cpu.cycles % (SISA_CPU_CLK_FREQ / SISA_TIMER_FREQ) == 0) {
 		sisa->cpu.ints_pending |= BIT(SISA_INTERRUPT_TIMER);
 	}
+
+	/* Update milliseconds counter */
+	if (sisa->cpu.cycles % (SISA_CPU_CLK_FREQ / 1000) == 0 &&
+	    sisa->io_ports[SISA_IO_PORT_MILLIS_COUNTER] > 0) {
+		sisa->io_ports[SISA_IO_PORT_MILLIS_COUNTER]--;
+	}
+
+	/* Update pseudorandom number (cycles) */
+	sisa->io_ports[SISA_IO_PORT_CYCLES] = (uint16_t)sisa->cpu.cycles;
 }
 
 void sisa_load_binary(struct sisa_context *sisa, uint16_t address, void *data, size_t size)
