@@ -215,6 +215,10 @@ static void sisa_demw_execute(struct sisa_context *sisa)
 		case SISA_INSTR_COMPARE_F_CMPLEU:
 			REGS[INSTR_Rd(instr)] = REGS[INSTR_Ra_6(instr)] <= REGS[INSTR_Rb_0(instr)];
 			break;
+		default:
+			sisa->cpu.exception = SISA_EXCEPTION_ILLEGAL_INSTR;
+			sisa->cpu.exc_happened = 1;
+			break;
 		}
 		break;
 	case SISA_OPCODE_ADDI:
@@ -266,6 +270,7 @@ static void sisa_demw_execute(struct sisa_context *sisa)
 			}
 			break;
 		}
+
 		break;
 	case SISA_OPCODE_IN_OUT:
 		switch (IN_OUT_F_BITS(instr)) {
@@ -318,6 +323,10 @@ static void sisa_demw_execute(struct sisa_context *sisa)
 			}
 			REGS[INSTR_Rd(instr)] = REGS[INSTR_Ra_6(instr)] / REGS[INSTR_Rb_0(instr)];
 			break;
+		default:
+			sisa->cpu.exception = SISA_EXCEPTION_ILLEGAL_INSTR;
+			sisa->cpu.exc_happened = 1;
+			break;
 		}
 		break;
 	case SISA_OPCODE_ABSOLUTE_JUMP:
@@ -344,6 +353,10 @@ static void sisa_demw_execute(struct sisa_context *sisa)
 		case SISA_INSTR_ABSOLUTE_JUMP_F_CALLS:
 			sisa->cpu.regfile.system.s3 = REGS[INSTR_Ra_6(instr)];
 			sisa->cpu.exception = SISA_EXCEPTION_CALLS;
+			sisa->cpu.exc_happened = 1;
+			break;
+		default:
+			sisa->cpu.exception = SISA_EXCEPTION_ILLEGAL_INSTR;
 			sisa->cpu.exc_happened = 1;
 			break;
 		}
@@ -438,8 +451,8 @@ static void sisa_demw_execute(struct sisa_context *sisa)
 		}
 		break;
 	default:
-		sisa->cpu.halted = 1;
-		printf("Invalid instruction at 0x%04X\n", sisa->cpu.pc);
+		sisa->cpu.exception = SISA_EXCEPTION_ILLEGAL_INSTR;
+		sisa->cpu.exc_happened = 1;
 		break;
 	}
 }
