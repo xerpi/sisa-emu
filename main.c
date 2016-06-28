@@ -41,6 +41,7 @@ static void usage(char *argv[])
 		"\t./sisa-emu -t -l addr=0x1000,file=user.bin syscode.bin sysdata.bin\n\n"
 		"\t Will enable the TLB and load 'user.bin' to 0x1000, 'syscode.bin' to " xstr(SISA_CODE_LOAD_ADDR)
 		" and 'sysdata.bin' to " xstr(SISA_DATA_LOAD_ADDR) "\n"
+		"\nTo switch between keyboard immersive/non immersive modes press the TAB key.\n"
 		"\nNote: when loading a file, if the filename ends with .bin it will be loaded as\n"
 		"raw binary, and as text (ASCII) otherwise (for example if it ends with .hex).\n"
 		, argv[0]);
@@ -241,6 +242,7 @@ int main(int argc, char *argv[])
 	int i;
 	struct sisa_context sisa;
 	enum run_mode run_mode = RUN_MODE_STEP;
+	int kb_immersive_mode = 0;
 	int do_step;
 	char c;
 	int has_code;
@@ -358,28 +360,32 @@ int main(int argc, char *argv[])
 		    (run_mode == RUN_MODE_RUN && kbhit())) {
 			c = getchar();
 
-			if (c == 's') {
-				do_step = 1;
-			} else if (c == 'c') {
-				if (run_mode == RUN_MODE_STEP)
-					run_mode = RUN_MODE_RUN;
-				else
+			if (c == '\t') {
+				kb_immersive_mode ^= 1;
+			} else if (!kb_immersive_mode) {
+				if (c == 's') {
+					do_step = 1;
+				} else if (c == 'c') {
+					if (run_mode == RUN_MODE_STEP)
+						run_mode = RUN_MODE_RUN;
+					else
+						run_mode = RUN_MODE_STEP;
+				} else if (c == 'r') {
+					printf("CPU reseted\n");
+					sisa_init(&sisa);
 					run_mode = RUN_MODE_STEP;
-			} else if (c == 'r') {
-				printf("CPU reseted\n");
-				sisa_init(&sisa);
-				run_mode = RUN_MODE_STEP;
-			} else if (c == 'i') {
-				sisa_print_dump(&sisa);
-			} else if (c == 't') {
-				sisa_print_tlb_dump(&sisa);
-			} else if (c == 'v') {
-				sisa_print_vga_dump(&sisa);
-			} else if (c == 'h') {
-				print_help();
-			} else if (c == 'q') {
-				break;
-			} else {
+				} else if (c == 'i') {
+					sisa_print_dump(&sisa);
+				} else if (c == 't') {
+					sisa_print_tlb_dump(&sisa);
+				} else if (c == 'v') {
+					sisa_print_vga_dump(&sisa);
+				} else if (c == 'h') {
+					print_help();
+				} else if (c == 'q') {
+					break;
+				}
+			} else { /* Immersive mode */
 				/* Escape sequence */
 				if (c == 27) {
 					getchar();
@@ -397,7 +403,6 @@ int main(int argc, char *argv[])
 						c = 0x92;
 						break;
 					}
-
 				}
 				sisa_keyboard_press(&sisa, c);
 			}
