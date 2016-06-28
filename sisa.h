@@ -16,6 +16,7 @@
 #define SISA_TIMER_FREQ      20
 #define SISA_NUM_KEYS        4
 #define SISA_NUM_SWITCHES    10
+#define SISA_NUM_7SEGS       4
 
 enum sisa_opcode {
 	SISA_OPCODE_ARIT_LOGIC    = 0b0000,
@@ -129,6 +130,8 @@ enum sisa_io_port {
 	SISA_IO_PORT_LEDS_RED       = 6,
 	SISA_IO_PORT_KEYS           = 7,
 	SISA_IO_PORT_SWITCHES       = 8,
+	SISA_IO_PORT_7SEG_CONTROL   = 9,
+	SISA_IO_PORT_7SEG_VALUE     = 10,
 	SISA_IO_PORT_VGA_CURSOR     = 11,
 	SISA_IO_PORT_VGA_CURSOR_EN  = 12,
 	SISA_IO_PORT_KB_READ_CHAR   = 15,
@@ -230,10 +233,16 @@ void sisa_tlb_set_enabled(struct sisa_context *sisa, int enabled);
 int sisa_tlb_is_enabled(const struct sisa_context *sisa);
 void sisa_keys_set(struct sisa_context *sisa, uint8_t keys);
 void sisa_switches_set(struct sisa_context *sisa, uint16_t switches);
+void sisa_key_toggle(struct sisa_context *sisa, uint8_t key_num);
+void sisa_switch_toggle(struct sisa_context *sisa, uint8_t switch_num);
 void sisa_keyboard_press(struct sisa_context *sisa, uint8_t key);
 
 void sisa_print_dump(const struct sisa_context *sisa);
 void sisa_print_tlb_dump(const struct sisa_context *sisa);
 void sisa_print_vga_dump(const struct sisa_context *sisa);
+void sisa_print_leds_dump(const struct sisa_context *sisa);
+void sisa_print_keys_dump(const struct sisa_context *sisa);
+void sisa_print_switches_dump(const struct sisa_context *sisa);
+void sisa_print_7segments_dump(const struct sisa_context *sisa);
 
 #endif

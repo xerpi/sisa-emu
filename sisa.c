@@ -79,6 +79,8 @@ void sisa_init(struct sisa_context *sisa)
 	for (i = 0; i < SISA_NUM_IO_PORTS; i++)
 		sisa->io_ports[i] = 0;
 
+	sisa->io_ports[SISA_IO_PORT_KEYS] = 0xFFFF;
+
 	sisa->cpu.kb_key_buffer = 0;
 	sisa_tlb_init(&sisa->itlb);
 	sisa_tlb_init(&sisa->dtlb);
@@ -604,6 +606,30 @@ void sisa_switches_set(struct sisa_context *sisa, uint16_t switches)
 	}
 }
 
+void sisa_key_toggle(struct sisa_context *sisa, uint8_t key_num)
+{
+	uint8_t current_keys;
+
+	if (key_num > SISA_NUM_KEYS)
+		return;
+
+	current_keys = sisa->io_ports[SISA_IO_PORT_KEYS];
+
+	sisa_keys_set(sisa,current_keys ^ (1 << key_num));
+}
+
+void sisa_switch_toggle(struct sisa_context *sisa, uint8_t switch_num)
+{
+	uint16_t current_switches;
+
+	if (switch_num > SISA_NUM_SWITCHES)
+		return;
+
+	current_switches = sisa->io_ports[SISA_IO_PORT_SWITCHES];
+
+	sisa_switches_set(sisa, current_switches ^ (1 << switch_num));
+}
+
 void sisa_keyboard_press(struct sisa_context *sisa, uint8_t key)
 {
 	if (sisa->io_ports[SISA_IO_PORT_KB_READ_CHAR]) {
@@ -688,6 +714,45 @@ void sisa_print_vga_dump(const struct sisa_context *sisa)
 
 	for (i = 0; i < num_cols + 2; i++)
 		putchar('-');
+
+	putchar('\n');
+}
+
+void sisa_print_leds_dump(const struct sisa_context *sisa)
+{
+	printf("LEDs Red: 0x%02X  Green: 0x%01X\n",
+		sisa->io_ports[SISA_IO_PORT_LEDS_RED],
+		sisa->io_ports[SISA_IO_PORT_LEDS_GREEN]);
+}
+
+void sisa_print_keys_dump(const struct sisa_context *sisa)
+{
+	printf("Keys: 0x%01X\n",
+		sisa->io_ports[SISA_IO_PORT_KEYS]);
+}
+
+void sisa_print_switches_dump(const struct sisa_context *sisa)
+{
+	printf("Switches: 0x%01X\n",
+		sisa->io_ports[SISA_IO_PORT_SWITCHES]);
+}
+
+void sisa_print_7segments_dump(const struct sisa_context *sisa)
+{
+	int i, j;
+	uint16_t control = sisa->io_ports[SISA_IO_PORT_7SEG_CONTROL];
+	uint16_t value = sisa->io_ports[SISA_IO_PORT_7SEG_VALUE];
+
+	printf("7 segments: ");
+
+	for (i = 0; i < SISA_NUM_7SEGS; i++) {
+		j = SISA_NUM_7SEGS - i - 1;
+
+		if (control & BIT(j))
+			printf("%X ", (value >> (j * 4)) & 0xF);
+		else
+			printf("X ");
+	}
 
 	putchar('\n');
 }

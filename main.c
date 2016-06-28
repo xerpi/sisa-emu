@@ -26,6 +26,14 @@ static void usage(char *argv[])
 		"                            (defaults to disabled)\n"
 		"  -v, --show-vga          prints the VGA when in continue mode\n"
 		"                            (defaults to disabled)\n"
+		"  -e, --show-leds         prints the leds when in continue mode\n"
+		"                            (defaults to disabled)\n"
+		"  -k, --show-keys         prints the keys when in continue mode\n"
+		"                            (defaults to disabled)\n"
+		"  -w, --show-switches     prints the switches when in continue mode\n"
+		"                            (defaults to disabled)\n"
+		"  -7, --show-7segments    prints the 7 segments when in continue mode\n"
+		"                            (defaults to disabled)\n"
 		"  -s, --speedup=N         executes N steps per iteration in continue mode\n"
 		"                            (defaults to 1)\n"
 		"  -c, --code-addr=ADDR    address where to load the code at\n"
@@ -54,9 +62,12 @@ static void print_help()
 		"s - do step\n"
 		"c - pause/continue\n"
 		"r - reset\n"
+		"a - info all\n"
 		"i - info registers\n"
 		"t - info TLB\n"
 		"v - dump VGA\n"
+		"k - toggle key\n"
+		"w - toggle switch\n"
 		"h - show this help\n"
 		"q - quit\n\n"
 	);
@@ -252,6 +263,10 @@ int main(int argc, char *argv[])
 	int opt;
 	int enable_tlb = 0;
 	int show_vga = 0;
+	int show_leds = 0;
+	int show_keys = 0;
+	int show_switches = 0;
+	int show_7segs = 0;
 	int speedup = 1;
 	uint16_t code_addr = SISA_CODE_LOAD_ADDR;
 	uint16_t data_addr = SISA_DATA_LOAD_ADDR;
@@ -260,6 +275,10 @@ int main(int argc, char *argv[])
 	struct option long_options[] = {
 		{"enable-tlb", no_argument, NULL, 't'},
 		{"show-vga", no_argument, NULL, 'v'},
+		{"show-leds", no_argument, NULL, 'e'},
+		{"show-keys", no_argument, NULL, 'k'},
+		{"show-switches", no_argument, NULL, 'w'},
+		{"show-7segments", no_argument, NULL, '7'},
 		{"speedup", required_argument, NULL, 's'},
 		{"code-addr", required_argument, NULL, 'c'},
 		{"data-addr", required_argument, NULL, 'd'},
@@ -279,13 +298,25 @@ int main(int argc, char *argv[])
 
 	sisa_init(&sisa);
 
-	while ((opt = getopt_long(argc, argv, "tvs:c:d:p:l:b:h", long_options, NULL)) != -1) {
+	while ((opt = getopt_long(argc, argv, "tvekw7s:c:d:p:l:b:h", long_options, NULL)) != -1) {
 		switch (opt) {
 		case 't':
 			enable_tlb = 1;
 			break;
 		case 'v':
 			show_vga = 1;
+			break;
+		case 'e':
+			show_leds = 1;
+			break;
+		case '7':
+			show_7segs = 1;
+			break;
+		case 'k':
+			show_keys = 1;
+			break;
+		case 'w':
+			show_switches = 1;
 			break;
 		case 's':
 			speedup = strtol(optarg, NULL, 10);
@@ -362,6 +393,14 @@ int main(int argc, char *argv[])
 
 			if (c == '\t') {
 				kb_immersive_mode ^= 1;
+			} else if (c == 'k') {
+				printf("Enter key number to toggle: ");
+				sisa_key_toggle(&sisa, getchar() - '0');
+				putchar('\n');
+			} else if (c == 'w') {
+				printf("Enter switch number to toggle: ");
+				sisa_switch_toggle(&sisa, getchar() - '0');
+				putchar('\n');
 			} else if (!kb_immersive_mode) {
 				if (c == 's') {
 					do_step = 1;
@@ -374,6 +413,13 @@ int main(int argc, char *argv[])
 					printf("CPU reseted\n");
 					sisa_init(&sisa);
 					run_mode = RUN_MODE_STEP;
+				} else if (c == 'a') {
+					sisa_print_vga_dump(&sisa);
+					sisa_print_dump(&sisa);
+					sisa_print_leds_dump(&sisa);
+					sisa_print_keys_dump(&sisa);
+					sisa_print_switches_dump(&sisa);
+					sisa_print_7segments_dump(&sisa);
 				} else if (c == 'i') {
 					sisa_print_dump(&sisa);
 				} else if (c == 't') {
@@ -420,6 +466,18 @@ int main(int argc, char *argv[])
 			}
 
 			sisa_print_dump(&sisa);
+
+			if (show_leds)
+				sisa_print_leds_dump(&sisa);
+
+			if (show_keys)
+				sisa_print_keys_dump(&sisa);
+
+			if (show_switches)
+				sisa_print_switches_dump(&sisa);
+
+			if (show_7segs)
+				sisa_print_7segments_dump(&sisa);
 
 			if (show_vga) {
 				/* Set cursor to 0,0 */
