@@ -213,13 +213,18 @@ struct sisa_context {
 	struct sisa_tlb itlb;
 	struct sisa_tlb dtlb;
 	int tlb_enabled;
+	uint16_t *breakpoint_list;
+	unsigned int breakpoint_num;
 };
 
 void sisa_init(struct sisa_context *sisa);
+void sisa_destroy(struct sisa_context *sisa);
 void sisa_step_cycle(struct sisa_context *sisa);
 void sisa_load_binary(struct sisa_context *sisa, uint16_t address, void *data, size_t size);
 
 int sisa_cpu_is_halted(const struct sisa_context *sisa);
+int sisa_breakpoint_reached(const struct sisa_context *sisa);
+void sisa_add_breakpoint(struct sisa_context *sisa, uint16_t addr);
 void sisa_set_pc(struct sisa_context *sisa, uint16_t pc);
 void sisa_tlb_set_enabled(struct sisa_context *sisa, int enabled);
 int sisa_tlb_is_enabled(const struct sisa_context *sisa);

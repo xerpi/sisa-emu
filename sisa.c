@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <strings.h>
 #include <ctype.h>
@@ -82,6 +83,17 @@ void sisa_init(struct sisa_context *sisa)
 	sisa_tlb_init(&sisa->itlb);
 	sisa_tlb_init(&sisa->dtlb);
 	sisa->tlb_enabled = 1;
+
+	sisa->breakpoint_list = NULL;
+	sisa->breakpoint_num = 0;
+}
+
+void sisa_destroy(struct sisa_context *sisa)
+{
+	if (sisa->breakpoint_list) {
+		free(sisa->breakpoint_list);
+		sisa->breakpoint_list = NULL;
+	}
 }
 
 static int sisa_tlb_access(struct sisa_context *sisa, const struct sisa_tlb *tlb,
@@ -530,6 +542,31 @@ void sisa_load_binary(struct sisa_context *sisa, uint16_t address, void *data, s
 int sisa_cpu_is_halted(const struct sisa_context *sisa)
 {
 	return sisa->cpu.halted;
+}
+
+int sisa_breakpoint_reached(const struct sisa_context *sisa)
+{
+	int i;
+
+	/* Only check for breakpoints when status is fetch */
+	if (sisa->cpu.status != SISA_CPU_STATUS_FETCH)
+		return 0;
+
+	for (i = 0; i < sisa->breakpoint_num; i++) {
+		if (sisa->cpu.pc == sisa->breakpoint_list[i])
+			return 1;
+	}
+
+	return 0;
+}
+
+void sisa_add_breakpoint(struct sisa_context *sisa, uint16_t addr)
+{
+	sisa->breakpoint_list = realloc(sisa->breakpoint_list,
+		sisa->breakpoint_num + 1);
+
+	sisa->breakpoint_list[sisa->breakpoint_num] = addr;
+	sisa->breakpoint_num++;
 }
 
 void sisa_set_pc(struct sisa_context *sisa, uint16_t pc)

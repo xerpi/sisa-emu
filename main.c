@@ -22,20 +22,21 @@ static void usage(char *argv[])
 {
 	printf("Source code: https://github.com/xerpi/sisa-emu\n\n"
 		"Usage: %s [OPTIONS] <code.bin> <data.bin>\n\n"
-		"  -t, --enable-tlb      enables the TLB\n"
-		"                          (defaults to disabled)\n"
-		"  -v, --show-vga        prints the VGA when in continue mode\n"
-		"                          (defaults to disabled)\n"
-		"  -s, --speedup=N       executes N steps per iteration in continue mode\n"
-		"                          (defaults to 1)\n"
-		"  -c, --code-addr=ADDR  address where to load the code at\n"
-		"                          (defaults to " xstr(SISA_CODE_LOAD_ADDR) ")\n"
-		"  -d, --data-addr=ADDR  address where to load the data at\n"
-		"                          (defaults to " xstr(SISA_DATA_LOAD_ADDR) ")\n"
-		"  -p, --pc-addr=ADDR    initial address of the PC\n"
-		"                          (defaults to " xstr(SISA_CODE_LOAD_ADDR) ")\n"
+		"  -t, --enable-tlb        enables the TLB\n"
+		"                            (defaults to disabled)\n"
+		"  -v, --show-vga          prints the VGA when in continue mode\n"
+		"                            (defaults to disabled)\n"
+		"  -s, --speedup=N         executes N steps per iteration in continue mode\n"
+		"                            (defaults to 1)\n"
+		"  -c, --code-addr=ADDR    address where to load the code at\n"
+		"                            (defaults to " xstr(SISA_CODE_LOAD_ADDR) ")\n"
+		"  -d, --data-addr=ADDR    address where to load the data at\n"
+		"                            (defaults to " xstr(SISA_DATA_LOAD_ADDR) ")\n"
+		"  -p, --pc-addr=ADDR      initial address of the PC\n"
+		"                            (defaults to " xstr(SISA_CODE_LOAD_ADDR) ")\n"
+		"  -b, --breakpoint=ADDR   adds a breakpoint to ADDR\n"
 		"  -l, --load addr=ADDR,file=FILE loads FILE to ADDR\n"
-		"  -h, --help            displays this help and exit\n"
+		"  -h, --help              displays this help and exit\n"
 		"\nExample:\n"
 		"\t./sisa-emu -t -l addr=0x1000,file=user.bin syscode.bin sysdata.bin\n\n"
 		"\t Will enable the TLB and load 'user.bin' to 0x1000, 'syscode.bin' to " xstr(SISA_CODE_LOAD_ADDR)
@@ -244,6 +245,7 @@ int main(int argc, char *argv[])
 	char c;
 	int has_code;
 	int has_data;
+	int bp_reached = 0;
 
 	int opt;
 	int enable_tlb = 0;
@@ -260,8 +262,9 @@ int main(int argc, char *argv[])
 		{"code-addr", required_argument, NULL, 'c'},
 		{"data-addr", required_argument, NULL, 'd'},
 		{"pc-addr", required_argument, NULL, 'p'},
-		{"help", no_argument, NULL, 'h'},
 		{"load", required_argument, NULL, 'l'},
+		{"breakpoint", required_argument, NULL, 'b'},
+		{"help", no_argument, NULL, 'h'},
 		{NULL, 0, NULL, 0}
 	};
 
@@ -274,7 +277,7 @@ int main(int argc, char *argv[])
 
 	sisa_init(&sisa);
 
-	while ((opt = getopt_long(argc, argv, "tvs:c:d:l:p:h", long_options, NULL)) != -1) {
+	while ((opt = getopt_long(argc, argv, "tvs:c:d:p:l:b:h", long_options, NULL)) != -1) {
 		switch (opt) {
 		case 't':
 			enable_tlb = 1;
@@ -296,13 +299,18 @@ int main(int argc, char *argv[])
 		case 'p':
 			pc_addr = strtol(optarg, NULL, 16);
 			break;
-		case 'h':
-			usage(argv);
-			return -1;
 		case 'l':
 			if (!parse_load_subopt(&sisa, optarg))
 				return -1;
 			break;
+		case 'b': {
+			uint16_t bp_addr = strtol(optarg, NULL, 16);
+			sisa_add_breakpoint(&sisa, bp_addr);
+			break;
+		}
+		case 'h':
+			usage(argv);
+			return -1;
 		}
 	}
 
@@ -398,10 +406,13 @@ int main(int argc, char *argv[])
 		if (run_mode == RUN_MODE_STEP && do_step) {
 			sisa_step_cycle(&sisa);
 			sisa_print_dump(&sisa);
+			bp_reached = sisa_breakpoint_reached(&sisa);
 		} else if (run_mode == RUN_MODE_RUN) {
 			/* Do as many cycles as the speedup */
-			for (i = 0; i < speedup; i++)
+			for (i = 0; i < speedup && !bp_reached; i++) {
 				sisa_step_cycle(&sisa);
+				bp_reached = sisa_breakpoint_reached(&sisa);
+			}
 
 			sisa_print_dump(&sisa);
 
@@ -415,10 +426,16 @@ int main(int argc, char *argv[])
 		if (sisa_cpu_is_halted(&sisa)) {
 			printf("CPU halted at 0x%04X\n", sisa.cpu.pc);
 			run_mode = RUN_MODE_STEP;
+		} else if (bp_reached) {
+			printf("Breakpoint reached at 0x%04X\n", sisa.cpu.pc);
+			run_mode = RUN_MODE_STEP;
+			bp_reached = 0;
 		}
 	}
 
 	stdin_restore();
+
+	sisa_destroy(&sisa);
 
 	return 0;
 }
