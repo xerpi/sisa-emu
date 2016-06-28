@@ -242,6 +242,8 @@ int main(int argc, char *argv[])
 	enum run_mode run_mode = RUN_MODE_STEP;
 	int do_step;
 	char c;
+	int has_code;
+	int has_data;
 
 	int opt;
 	int enable_tlb = 0;
@@ -310,12 +312,15 @@ int main(int argc, char *argv[])
 	/* If there are any arguments left, they are the plain
 	 * code (and data) file arguments. */
 
-	if (argc > 0) {
+	has_code = argc > 0;
+	has_data = argc > 1;
+
+	if (has_code) {
 		if (!load_file(&sisa, argv[0], code_addr))
 			return -1;
 	}
 
-	if (argc > 1) {
+	if (has_data) {
 		if (!load_file(&sisa, argv[1], data_addr))
 			return -1;
 	}
@@ -326,8 +331,13 @@ int main(int argc, char *argv[])
 	printf("TLB enabled: %s\n", enable_tlb ? "yes" : "no");
 	printf("Show VGA: %s\n", show_vga ? "yes" : "no");
 	printf("Run mode speedup: %d\n", speedup);
-	printf("Code load address: 0x%04X\n", code_addr);
-	printf("Data load address: 0x%04X\n", data_addr);
+
+	if (has_code)
+		printf("Code load address: 0x%04X\n", code_addr);
+
+	if (has_data)
+		printf("Data load address: 0x%04X\n", data_addr);
+
 	printf("PC address: 0x%04X\n\n", pc_addr);
 
 	stdin_setup();
