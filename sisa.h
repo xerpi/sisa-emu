@@ -14,6 +14,8 @@
 #define SISA_NUM_IO_PORTS    256
 #define SISA_CPU_CLK_FREQ    6250000
 #define SISA_TIMER_FREQ      20
+#define SISA_NUM_GREEN_LEDS  8
+#define SISA_NUM_RED_LEDS    10
 #define SISA_NUM_KEYS        4
 #define SISA_NUM_SWITCHES    10
 #define SISA_NUM_7SEGS       4

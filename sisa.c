@@ -610,19 +610,19 @@ void sisa_key_toggle(struct sisa_context *sisa, uint8_t key_num)
 {
 	uint8_t current_keys;
 
-	if (key_num > SISA_NUM_KEYS)
+	if (key_num >= SISA_NUM_KEYS)
 		return;
 
 	current_keys = sisa->io_ports[SISA_IO_PORT_KEYS];
 
-	sisa_keys_set(sisa,current_keys ^ (1 << key_num));
+	sisa_keys_set(sisa, current_keys ^ (1 << key_num));
 }
 
 void sisa_switch_toggle(struct sisa_context *sisa, uint8_t switch_num)
 {
 	uint16_t current_switches;
 
-	if (switch_num > SISA_NUM_SWITCHES)
+	if (switch_num >= SISA_NUM_SWITCHES)
 		return;
 
 	current_switches = sisa->io_ports[SISA_IO_PORT_SWITCHES];
@@ -651,11 +651,11 @@ void sisa_print_dump(const struct sisa_context *sisa)
 	};
 
 	printf("%s\n", status_str[sisa->cpu.status]);
-	printf("pc: 0x%04X\n", sisa->cpu.pc);
-	printf("ir: 0x%04X\n", sisa->cpu.ir);
+	printf("  pc: 0x%04X\n", sisa->cpu.pc);
+	printf("  ir: 0x%04X\n", sisa->cpu.ir);
 
 	for (i = 0; i < 8; i++) {
-		printf("r%i: 0x%04X\n", i, sisa->cpu.regfile.general.regs[i]);
+		printf("  r%i: 0x%04X\n", i, sisa->cpu.regfile.general.regs[i]);
 	}
 
 	putchar('\n');
@@ -718,23 +718,46 @@ void sisa_print_vga_dump(const struct sisa_context *sisa)
 	putchar('\n');
 }
 
+static void print_binary(uint32_t n, int num_bits)
+{
+	int i;
+
+	for (i = 0; i < num_bits; i++) {
+		printf("%d ", (n >> (num_bits - i - 1)) & 1);
+	}
+}
+
 void sisa_print_leds_dump(const struct sisa_context *sisa)
 {
-	printf("LEDs Red: 0x%02X  Green: 0x%01X\n",
-		sisa->io_ports[SISA_IO_PORT_LEDS_RED],
-		sisa->io_ports[SISA_IO_PORT_LEDS_GREEN]);
+	uint16_t red_leds = sisa->io_ports[SISA_IO_PORT_LEDS_RED];
+	uint16_t green_leds = sisa->io_ports[SISA_IO_PORT_LEDS_GREEN];
+
+	printf("LEDs Red: 0x%02X --> ", red_leds);
+	print_binary(red_leds, SISA_NUM_RED_LEDS);
+	printf("   LEDs Green: 0x%01X --> ", green_leds);
+	print_binary(green_leds, SISA_NUM_GREEN_LEDS);
+
+	putchar('\n');
 }
 
 void sisa_print_keys_dump(const struct sisa_context *sisa)
 {
-	printf("Keys: 0x%01X\n",
-		sisa->io_ports[SISA_IO_PORT_KEYS]);
+	uint16_t keys = sisa->io_ports[SISA_IO_PORT_KEYS];
+
+	printf("Keys: 0x%01X --> ", keys);
+	print_binary(keys, SISA_NUM_KEYS);
+
+	putchar('\n');
 }
 
 void sisa_print_switches_dump(const struct sisa_context *sisa)
 {
-	printf("Switches: 0x%01X\n",
-		sisa->io_ports[SISA_IO_PORT_SWITCHES]);
+	uint16_t switches = sisa->io_ports[SISA_IO_PORT_SWITCHES];
+
+	printf("Switches: 0x%03X --> ", switches);
+	print_binary(switches, SISA_NUM_SWITCHES);
+
+	putchar('\n');
 }
 
 void sisa_print_7segments_dump(const struct sisa_context *sisa)

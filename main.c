@@ -391,16 +391,20 @@ int main(int argc, char *argv[])
 		    (run_mode == RUN_MODE_RUN && kbhit())) {
 			c = getchar();
 
-			if (c == '\t') {
+			if ((c == '\t') && (run_mode == RUN_MODE_RUN)) {
 				kb_immersive_mode ^= 1;
 			} else if (c == 'k') {
 				printf("Enter key number to toggle: ");
 				sisa_key_toggle(&sisa, getchar() - '0');
 				putchar('\n');
+				if (run_mode == RUN_MODE_STEP)
+					sisa_print_keys_dump(&sisa);
 			} else if (c == 'w') {
 				printf("Enter switch number to toggle: ");
 				sisa_switch_toggle(&sisa, getchar() - '0');
 				putchar('\n');
+				if (run_mode == RUN_MODE_STEP)
+					sisa_print_switches_dump(&sisa);
 			} else if (!kb_immersive_mode) {
 				if (c == 's') {
 					do_step = 1;
@@ -415,11 +419,11 @@ int main(int argc, char *argv[])
 					run_mode = RUN_MODE_STEP;
 				} else if (c == 'a') {
 					sisa_print_vga_dump(&sisa);
-					sisa_print_dump(&sisa);
 					sisa_print_leds_dump(&sisa);
 					sisa_print_keys_dump(&sisa);
 					sisa_print_switches_dump(&sisa);
 					sisa_print_7segments_dump(&sisa);
+					sisa_print_dump(&sisa);
 				} else if (c == 'i') {
 					sisa_print_dump(&sisa);
 				} else if (c == 't') {
@@ -465,7 +469,15 @@ int main(int argc, char *argv[])
 				bp_reached = sisa_breakpoint_reached(&sisa);
 			}
 
-			sisa_print_dump(&sisa);
+			if (show_vga) {
+				/* Set cursor to 0,0 */
+				printf("\e[1;1H\e[2J");
+				if (kb_immersive_mode)
+					printf("Immersive keyboard input\n");
+				else
+					printf("Non-immersive keyboard input\n");
+				sisa_print_vga_dump(&sisa);
+			}
 
 			if (show_leds)
 				sisa_print_leds_dump(&sisa);
@@ -479,19 +491,17 @@ int main(int argc, char *argv[])
 			if (show_7segs)
 				sisa_print_7segments_dump(&sisa);
 
-			if (show_vga) {
-				/* Set cursor to 0,0 */
-				printf("\e[1;1H\e[2J");
-				sisa_print_vga_dump(&sisa);
-			}
+			sisa_print_dump(&sisa);
 		}
 
 		if (sisa_cpu_is_halted(&sisa)) {
 			printf("CPU halted at 0x%04X\n", sisa.cpu.pc);
 			run_mode = RUN_MODE_STEP;
+			kb_immersive_mode = 0;
 		} else if (bp_reached) {
 			printf("Breakpoint reached at 0x%04X\n", sisa.cpu.pc);
 			run_mode = RUN_MODE_STEP;
+			kb_immersive_mode = 0;
 			bp_reached = 0;
 		}
 	}
